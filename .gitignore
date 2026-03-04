@@ -1,0 +1,18 @@
+# Storage (미디어·임시·출력 — 푸시 제외)
+storage/
+
+# DB (로컬 SQLite 등)
+*.db
+database/
+postgres_data/
+
+# 가상환경·캐시·환경변수 (API 키 등 유출 방지)
+.venv/
+__pycache__/
+.env
+.env.*
+*.env
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: flairy_db_v4
+    environment:
+      POSTGRES_DB: flairy_v4
+      POSTGRES_USER: flairy_admin
+      POSTGRES_PASSWORD: flairy_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data

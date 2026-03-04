@@ -1,0 +1,111 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ project_title }} - Flairy{% endblock %}
+{% block head %}
+<style>
+  /* 9:16 전용 (1080x1920 FHD 세로). 11:17/726:1122 등 레거시 비율 미사용 */
+  .player-9-16 {
+    aspect-ratio: 9 / 16;
+    width: 100%;
+    max-width: min(100%, calc(90vh * 9 / 16));
+    max-height: 90vh;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    background: #1a1a1a;
+  }
+  .player-blur {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(20px) brightness(0.7);
+    transform: scale(1.1);
+  }
+  /* object-fit: contain으로 9:16 영상 비율 유지, 찌그러짐 방지 */
+  .player-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center center;
+  }
+  .player-video.portrait {
+    object-position: top center;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto px-4 py-6">
+  <h1 class="text-lg font-semibold text-gray-800 text-center mb-4 truncate">{{ project_title }}</h1>
+
+  {% if video_url %}
+  <div class="player-9-16 rounded-xl shadow-xl" id="playerContainer">
+    <video
+      class="player-blur"
+      id="blurLayer"
+      src="{{ video_url }}"
+      muted
+      loop
+      playsinline
+      preload="metadata"
+    ></video>
+    <video
+      class="player-video"
+      id="mainVideo"
+      src="{{ video_url }}"
+      controls
+      playsinline
+      preload="metadata"
+    ></video>
+  </div>
+  {% else %}
+  <div class="player-9-16 rounded-xl bg-gray-200 flex items-center justify-center text-gray-500">
+    영상이 아직 없습니다.
+  </div>
+  {% endif %}
+
+  <div class="flex gap-3 mt-6">
+    <button
+      type="button"
+      id="btnSave"
+      class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-300 font-medium hover:bg-gray-50 transition-colors"
+    >
+      영상 저장
+    </button>
+    <a
+      href="/"
+      class="flex-1 py-3 px-4 rounded-lg border-2 border-indigo-600 text-indigo-600 font-medium hover:bg-indigo-50 text-center transition-colors"
+    >
+      내 앨범 관리
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if video_url %}
+<script>
+(function () {
+  const mainVideo = document.getElementById("mainVideo");
+  const blurLayer = document.getElementById("blurLayer");
+  const container = document.getElementById("playerContainer");
+
+  function setPortraitClass() {
+    if (!mainVideo.videoWidth) return;
+    const isPortrait = mainVideo.videoHeight > mainVideo.videoWidth;
+    mainVideo.classList.toggle("portrait", isPortrait);
+  }
+
+  mainVideo.addEventListener("loadedmetadata", setPortraitClass);
+  if (mainVideo.readyState >= 1) setPortraitClass();
+
+  document.getElementById("btnSave").addEventListener("click", function () {
+    console.log("영상 저장 (API 연동 예정)");
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

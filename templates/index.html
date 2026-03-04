@@ -1,0 +1,539 @@
+{% extends "layouts/base.html" %}
+{% block title %}Flairy - 디지털 앨범 서비스{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6">
+  <!-- Header -->
+  <header class="flex justify-between items-center mb-8">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl font-bold text-indigo-600">Flairy</span>
+      <span class="text-gray-500">디지털 앨범 서비스</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="#" class="text-gray-600 hover:text-indigo-600">내 앨범 관리</a>
+      <a href="#" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">로그인</a>
+    </div>
+  </header>
+
+  <!-- Album title + File select -->
+  <section class="mb-6">
+    <div class="flex items-center gap-3 flex-wrap">
+      <label class="text-sm font-medium text-gray-700 whitespace-nowrap">앨범 제목</label>
+      <input
+        type="text"
+        id="albumTitle"
+        placeholder="앨범 제목을 입력하세요"
+        class="flex-1 min-w-[200px] px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      />
+      <button
+        type="button"
+        id="btnFileSelect"
+        class="px-4 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 font-medium"
+      >
+        파일 선택
+      </button>
+    </div>
+  </section>
+
+  <!-- Counters -->
+  <div class="flex gap-6 mb-2 text-sm text-gray-600">
+    <span id="counterTotal">사진+영상: 0/30</span>
+    <span id="counterVideo">영상: 0/5</span>
+  </div>
+
+  <!-- Drag & Drop zone -->
+  <section
+    id="dropZone"
+    class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer mb-6"
+  >
+    <p class="text-gray-500">여기에 사진이나 영상을 끌어다 놓으세요</p>
+    <p class="text-sm text-gray-400 mt-1">또는 위의 [파일 선택] 버튼을 사용하세요</p>
+  </section>
+  <input type="file" id="fileInput" multiple accept="image/*,video/*" class="hidden" />
+
+  <!-- Thumbnail list (Sortable) -->
+  <section id="thumbnailSection" class="mb-6 hidden">
+    <p class="text-sm text-gray-500 mb-2">Drag & Drop 으로 사진 순서 바꾸기</p>
+    <ul
+      id="thumbnailList"
+      class="flex flex-col gap-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2"
+    >
+      <!-- items injected by JS -->
+    </ul>
+  </section>
+
+  <!-- Mode: AI 적용 방식 / Rule-Based -->
+  <section class="flex gap-2 mb-6">
+    <button
+      type="button"
+      data-mode="ai"
+      class="mode-btn px-5 py-2.5 rounded-lg border-2 font-medium transition-colors bg-indigo-600 text-white border-indigo-600"
+    >
+      AI 적용 방식
+    </button>
+    <button
+      type="button"
+      data-mode="rule_based"
+      class="mode-btn px-5 py-2.5 rounded-lg border-2 border-gray-300 font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+    >
+      Rule-Based
+    </button>
+  </section>
+
+  <!-- Bottom action buttons -->
+  <section class="flex gap-4 mb-4">
+    <button
+      type="button"
+      id="btnHighlight"
+      class="flex-1 py-3 px-6 rounded-lg border-2 border-gray-300 font-medium hover:bg-gray-50 transition-colors"
+    >
+      하이라이트 영상 만들기
+    </button>
+    <button
+      type="button"
+      id="btnAlbum"
+      class="flex-1 py-3 px-6 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-medium hover:bg-indigo-100 transition-colors"
+    >
+      디지털 앨범 만들기
+    </button>
+  </section>
+
+  <!-- Debug mode -->
+  <label class="flex items-center gap-2 text-sm text-gray-600">
+    <input type="checkbox" id="debugMode" class="rounded border-gray-300" />
+    디버그 모드
+  </label>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const MAX_TOTAL = 30;
+  const MAX_VIDEO = 5;
+  const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150MB (Bytes)
+
+  let fileList = []; // { file, name, size, type, previewUrl?, order }
+  let mode = 'ai';
+
+  const albumTitle = document.getElementById('albumTitle');
+  const btnFileSelect = document.getElementById('btnFileSelect');
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const thumbnailSection = document.getElementById('thumbnailSection');
+  const thumbnailList = document.getElementById('thumbnailList');
+  const counterTotal = document.getElementById('counterTotal');
+  const counterVideo = document.getElementById('counterVideo');
+  const modeBtns = document.querySelectorAll('.mode-btn');
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  function isVideo(type) {
+    return (type || '').startsWith('video/');
+  }
+
+  function updateCounters() {
+    const total = fileList.length;
+    const videos = fileList.filter((e) => isVideo(e.file.type)).length;
+    counterTotal.textContent = '사진+영상: ' + total + '/' + MAX_TOTAL;
+    counterVideo.textContent = '영상: ' + videos + '/' + MAX_VIDEO;
+  }
+
+  function renderItem(item, index) {
+    const li = document.createElement('li');
+    li.className = 'flex items-center gap-3 p-2 rounded-lg border border-gray-100 hover:bg-gray-50';
+    li.dataset.index = index;
+    li.dataset.name = item.name;
+
+    const handle = document.createElement('span');
+    handle.className = 'sortable-handle cursor-grab text-gray-400 text-xl select-none';
+    handle.textContent = '≡';
+    handle.title = '드래그하여 순서 변경';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'w-12 h-12 rounded bg-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center';
+    if (item.previewUrl) {
+      const img = document.createElement('img');
+      img.src = item.previewUrl;
+      img.className = 'w-full h-full object-cover';
+      thumb.appendChild(img);
+    } else if (isVideo(item.file.type)) {
+      thumb.textContent = '🎬';
+    } else {
+      thumb.textContent = '🖼';
+    }
+
+    const info = document.createElement('div');
+    info.className = 'flex-1 min-w-0';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'font-medium text-gray-800 truncate';
+    titleEl.textContent = item.name;
+
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'mt-1 w-full bg-gray-100 rounded-full h-2 overflow-hidden';
+    const progressBar = document.createElement('div');
+    progressBar.className =
+      'upload-progress-bar bg-indigo-500 h-2 w-0 transition-[width] duration-150';
+    progressBar.dataset.index = String(index);
+    progressContainer.appendChild(progressBar);
+
+    const metaRow = document.createElement('div');
+    metaRow.className = 'flex items-center justify-between mt-1 text-xs text-gray-400';
+    const sizeEl = document.createElement('span');
+    sizeEl.textContent = formatSize(item.size);
+    const statusWrap = document.createElement('div');
+    statusWrap.className = 'flex items-center gap-2';
+    const statusIcon = document.createElement('span');
+    statusIcon.className = 'upload-status-icon hidden text-emerald-500 text-sm';
+    statusIcon.textContent = '✓';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className =
+      'upload-retry-btn hidden text-red-500 underline text-[11px] disabled:opacity-50';
+    retryBtn.textContent = '재시도';
+    statusWrap.appendChild(statusIcon);
+    statusWrap.appendChild(retryBtn);
+    metaRow.appendChild(sizeEl);
+    metaRow.appendChild(statusWrap);
+
+    info.appendChild(titleEl);
+    info.appendChild(progressContainer);
+    info.appendChild(metaRow);
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'p-1.5 rounded hover:bg-gray-200 text-gray-600';
+    upBtn.textContent = '↑';
+    upBtn.title = '위로';
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'p-1.5 rounded hover:bg-gray-200 text-gray-600';
+    downBtn.textContent = '↓';
+    downBtn.title = '아래로';
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'p-1.5 rounded hover:bg-red-100 text-gray-600 hover:text-red-600';
+    delBtn.textContent = '🗑️';
+    delBtn.title = '삭제';
+
+    li.appendChild(handle);
+    li.appendChild(thumb);
+    li.appendChild(info);
+    li.appendChild(upBtn);
+    li.appendChild(downBtn);
+    li.appendChild(delBtn);
+
+    upBtn.addEventListener('click', () => moveItem(index, -1));
+    downBtn.addEventListener('click', () => moveItem(index, 1));
+    delBtn.addEventListener('click', () => removeItem(index));
+
+    return li;
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function moveItem(fromIndex, delta) {
+    const toIndex = Math.max(0, Math.min(fileList.length - 1, fromIndex + delta));
+    if (toIndex === fromIndex) return;
+    const item = fileList.splice(fromIndex, 1)[0];
+    fileList.splice(toIndex, 0, item);
+    renderList();
+    syncSortable();
+    console.log('순서 변경:', fileList.map((e) => e.name));
+  }
+
+  function removeItem(index) {
+    fileList.splice(index, 1);
+    updateCounters();
+    renderList();
+    if (fileList.length === 0) thumbnailSection.classList.add('hidden');
+    syncSortable();
+  }
+
+  function renderList() {
+    thumbnailList.innerHTML = '';
+    fileList.forEach((item, i) => thumbnailList.appendChild(renderItem(item, i)));
+    updateCounters();
+  }
+
+  function addFiles(files) {
+    const added = [];
+    for (const file of Array.from(files)) {
+      if (fileList.length >= MAX_TOTAL) break;
+      const type = file.type || '';
+      const isV = isVideo(type);
+      const currentVideos = fileList.filter((e) => isVideo(e.file.type)).length;
+      if (isV && currentVideos >= MAX_VIDEO) continue;
+
+      const item = {
+        file,
+        name: file.name,
+        size: file.size,
+        type: type.startsWith('image/') ? 'image' : 'video',
+        previewUrl: null,
+        order: fileList.length,
+      };
+      if (file.type && file.type.startsWith('image/')) {
+        item.previewUrl = URL.createObjectURL(file);
+      }
+      fileList.push(item);
+      added.push(item);
+    }
+    updateCounters();
+    thumbnailSection.classList.remove('hidden');
+    renderList();
+    initSortable();
+    if (added.length) console.log('추가된 파일:', added.map((e) => e.name));
+  }
+
+  let sortableInstance = null;
+  function initSortable() {
+    if (sortableInstance) sortableInstance.destroy();
+    sortableInstance = new Sortable(thumbnailList, {
+      handle: '.sortable-handle',
+      animation: 150,
+      onEnd: function (evt) {
+        const from = evt.oldIndex;
+        const to = evt.newIndex;
+        if (from == null || to == null) return;
+        const item = fileList.splice(from, 1)[0];
+        fileList.splice(to, 0, item);
+        renderList();
+        initSortable();
+        console.log('Sortable 순서:', fileList.map((e) => e.name));
+      },
+    });
+  }
+  function syncSortable() {
+    if (sortableInstance) sortableInstance.destroy();
+    sortableInstance = null;
+    if (fileList.length) initSortable();
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('border-indigo-400', 'bg-indigo-50');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('border-indigo-400', 'bg-indigo-50');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('border-indigo-400', 'bg-indigo-50');
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+
+  btnFileSelect.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode;
+      modeBtns.forEach((b) => {
+        const on = b.dataset.mode === mode;
+        b.classList.toggle('bg-indigo-600', on);
+        b.classList.toggle('text-white', on);
+        b.classList.toggle('border-indigo-600', on);
+        b.classList.toggle('border-gray-300', !on);
+        b.classList.toggle('text-gray-600', !on);
+      });
+    });
+  });
+
+  function validateForSubmit() {
+    if (fileList.length === 0) {
+      alert('파일을 1개 이상 선택해 주세요.');
+      return false;
+    }
+    if (fileList.length > MAX_TOTAL) {
+      alert('총 파일 개수는 최대 ' + MAX_TOTAL + '개까지 가능합니다.');
+      return false;
+    }
+    const videoCount = fileList.filter((e) => isVideo(e.file.type)).length;
+    if (videoCount > MAX_VIDEO) {
+      alert('동영상은 최대 ' + MAX_VIDEO + '개까지 가능합니다.');
+      return false;
+    }
+    for (let i = 0; i < fileList.length; i++) {
+      if (isVideo(fileList[i].file.type) && fileList[i].file.size > MAX_VIDEO_BYTES) {
+        alert('동영상 파일은 개당 최대 150MB까지 가능합니다.\n(' + fileList[i].name + ')');
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function resetUploadUI() {
+    const items = thumbnailList.querySelectorAll('li');
+    items.forEach((li, index) => {
+      const bar = li.querySelector('.upload-progress-bar');
+      const icon = li.querySelector('.upload-status-icon');
+      const retry = li.querySelector('.upload-retry-btn');
+      if (bar) {
+        bar.style.width = '0%';
+        bar.classList.remove('bg-emerald-500', 'bg-red-400');
+        bar.classList.add('bg-indigo-500');
+      }
+      if (icon) {
+        icon.classList.add('hidden');
+      }
+      if (retry) {
+        retry.classList.add('hidden');
+        retry.disabled = false;
+      }
+      li.dataset.index = index;
+    });
+  }
+
+  function updateProgressBarsByBytes(loaded, total, sizes) {
+    let acc = 0;
+    for (let i = 0; i < sizes.length; i++) {
+      const start = acc;
+      const end = acc + sizes[i];
+      acc = end;
+      let pct = 0;
+      if (loaded >= end) {
+        pct = 100;
+      } else if (loaded > start) {
+        pct = Math.round(((loaded - start) / (end - start)) * 100);
+      }
+      const li = thumbnailList.querySelector('li[data-index="' + i + '"]');
+      if (!li) continue;
+      const bar = li.querySelector('.upload-progress-bar');
+      const icon = li.querySelector('.upload-status-icon');
+      if (bar) {
+        bar.style.width = pct + '%';
+        if (pct === 100) {
+          bar.classList.remove('bg-indigo-500');
+          bar.classList.add('bg-emerald-500');
+        }
+      }
+      if (icon && pct === 100) {
+        icon.classList.remove('hidden');
+      }
+    }
+  }
+
+  function markAllError(message) {
+    const items = thumbnailList.querySelectorAll('li');
+    items.forEach((li) => {
+      const bar = li.querySelector('.upload-progress-bar');
+      const icon = li.querySelector('.upload-status-icon');
+      const retry = li.querySelector('.upload-retry-btn');
+      if (bar) {
+        bar.style.width = '100%';
+        bar.classList.remove('bg-indigo-500', 'bg-emerald-500');
+        bar.classList.add('bg-red-400');
+      }
+      if (icon) {
+        icon.classList.add('hidden');
+      }
+      if (retry) {
+        retry.classList.remove('hidden');
+      }
+    });
+    if (message) {
+      alert(message);
+    }
+  }
+
+  function submitCreate(actionType) {
+    if (!validateForSubmit()) return;
+    const title = (albumTitle.value || '').trim() || '제목 없음';
+    const btnHighlight = document.getElementById('btnHighlight');
+    const btnAlbum = document.getElementById('btnAlbum');
+    btnHighlight.disabled = true;
+    btnAlbum.disabled = true;
+
+    resetUploadUI();
+    if (sortableInstance) {
+      sortableInstance.destroy();
+      sortableInstance = null;
+    }
+
+    const sizes = fileList.map((item) => item.file.size || 0);
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('mode', mode);
+    for (let i = 0; i < fileList.length; i++) {
+      formData.append('files', fileList[i].file);
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+
+    xhr.upload.onprogress = function (event) {
+      if (!event.lengthComputable) return;
+      updateProgressBarsByBytes(event.loaded, event.total || sizes.reduce((a, b) => a + b, 0), sizes);
+    };
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      btnHighlight.disabled = false;
+      btnAlbum.disabled = false;
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let data;
+        try {
+          data = JSON.parse(xhr.responseText || '{}');
+        } catch (e) {
+          markAllError('업로드 응답 파싱 실패');
+          return;
+        }
+        updateProgressBarsByBytes(
+          sizes.reduce((a, b) => a + b, 0),
+          sizes.reduce((a, b) => a + b, 0),
+          sizes,
+        );
+        const projectId = data.project_id;
+        if (!projectId) {
+          markAllError('project_id가 응답에 없습니다.');
+          return;
+        }
+        const debugMode = document.getElementById('debugMode').checked;
+        const url =
+          '/progress?project_id=' +
+          encodeURIComponent(projectId) +
+          (debugMode ? '&debug=1' : '');
+        window.location.href = url;
+      } else {
+        let message = '업로드 실패';
+        try {
+          const body = JSON.parse(xhr.responseText || '{}');
+          if (body && body.detail) message = '업로드 실패: ' + body.detail;
+        } catch (e) {
+          // ignore
+        }
+        markAllError(message);
+      }
+    };
+
+    xhr.onerror = function () {
+      btnHighlight.disabled = false;
+      btnAlbum.disabled = false;
+      markAllError('업로드 중 네트워크 오류가 발생했습니다.');
+    };
+
+    xhr.send(formData);
+  }
+
+  document.getElementById('btnHighlight').addEventListener('click', () => submitCreate('highlight'));
+  document.getElementById('btnAlbum').addEventListener('click', () => submitCreate('album'));
+})();
+</script>
+{% endblock %}

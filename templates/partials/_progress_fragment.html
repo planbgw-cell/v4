@@ -1,0 +1,52 @@
+{# HTMX가 갱신하는 영역. data-status/data-mode/data-sub-status로 클라이언트 분기. #}
+<div id="progress-fragment" data-status="{{ status }}" data-mode="{{ mode }}" data-sub-status="{{ sub_status }}" data-total="{{ total }}" data-processed="{{ processed }}" data-percentage="{{ percentage }}" class="rounded-lg border border-gray-200 bg-white p-6">
+  <p class="text-center text-lg font-medium text-gray-800 mb-6">하이라이트영상 을 만들고 있어요</p>
+  {% if status == 'ANALYZING' and total and total > 0 %}
+  <div class="mb-4">
+    <p class="text-center text-sm font-medium text-indigo-600 mb-2">{{ progress_message }}</p>
+    <div class="w-full bg-gray-200 rounded-full h-2.5">
+      <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: {{ percentage }}%"></div>
+    </div>
+    <p class="text-center text-xs text-gray-500 mt-1">{{ percentage }}%</p>
+  </div>
+  {% endif %}
+  <ul class="space-y-3">
+    <li class="flex items-center gap-3">
+      {% if status in ('COMPOSING', 'GENERATING', 'COMPLETED') %}
+      <span class="text-green-600">✔</span>
+      {% else %}
+      <span class="inline-block w-5 h-5 border-2 border-gray-300 rounded-full animate-spin border-t-indigo-600"></span>
+      {% endif %}
+      <span class="{% if status in ('COMPOSING', 'GENERATING', 'COMPLETED') %}text-gray-600{% else %}font-medium text-gray-800{% endif %}">사진분석완료</span>
+    </li>
+    <li class="flex items-center gap-3">
+      {% if status in ('GENERATING', 'COMPLETED') %}
+      <span class="text-green-600">✔</span>
+      {% elif status == 'COMPOSING' %}
+      <span class="inline-block w-5 h-5 border-2 border-gray-300 rounded-full animate-spin border-t-indigo-600"></span>
+      {% else %}
+      <span class="text-gray-300">○</span>
+      {% endif %}
+      <span class="{% if status == 'COMPOSING' %}font-medium text-indigo-600{% elif status in ('GENERATING', 'COMPLETED') %}text-gray-600{% else %}text-gray-400{% endif %}">페이지 구성중</span>
+    </li>
+    <li class="flex items-center gap-3">
+      {% if status == 'COMPLETED' %}
+      <span class="text-green-600">✔</span>
+      {% elif status == 'GENERATING' %}
+      <span class="inline-block w-5 h-5 border-2 border-gray-300 rounded-full animate-spin border-t-indigo-600"></span>
+      {% else %}
+      <span class="text-gray-300">○</span>
+      {% endif %}
+      <span class="{% if status == 'GENERATING' %}font-medium text-indigo-600 underline{% elif status == 'COMPLETED' %}text-gray-600{% else %}text-gray-400{% endif %}">앨범 생성중</span>
+    </li>
+  </ul>
+  <p class="text-center text-sm text-gray-500 mt-4">{{ message }}</p>
+  {% if logs_tail %}
+  <div
+    id="debug-logs"
+    class="mt-4 p-3 rounded bg-gray-50 border border-dashed border-amber-300 text-[11px] font-mono text-gray-800 whitespace-pre-wrap max-h-40 overflow-auto"
+  >
+    {{ logs_tail }}
+  </div>
+  {% endif %}
+</div>
