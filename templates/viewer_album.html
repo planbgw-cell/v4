@@ -1,0 +1,645 @@
+{% extends "layouts/base.html" %}
+{% block title %}Digital Album - {{ project_title }} - Flairy{% endblock %}
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* 포토북: 종이 배경 + 여백 + 9:16 프레임 */
+  .flipbook-wrap {
+    overflow: hidden;
+    min-height: 60vh;
+  }
+  .flipbook-inner {
+    position: relative;
+    width: 100%;
+    max-width: min(900px, 95vw);
+    margin: 0 auto;
+  }
+  .page-display {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    min-height: 320px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    border-radius: 4px;
+    overflow: visible;
+    background: #ffffff;
+  }
+  /* 페이지 내부 여백: 상하좌우 10~15% */
+  .page-content {
+    padding: 12% 14%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+    box-sizing: border-box;
+  }
+  .spread-row .page-content {
+    flex-direction: row;
+    gap: 4%;
+  }
+  /* 9:16 전용 프레임: 비율 유지 + 종이에 박힌 듯한 입체감 */
+  .media-frame {
+    aspect-ratio: 9 / 16;
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: inset 0 0 14px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
+    background: #1a1a1a;
+    flex-shrink: 0;
+  }
+  .slot-blur {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(22px) brightness(0.75);
+    transform: scale(1.15);
+  }
+  .media-frame:not(.has-blur) .slot-blur {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .media-frame.has-blur .slot-blur {
+    visibility: visible;
+  }
+  .slot-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+  }
+  .slot-img.contain {
+    object-fit: contain;
+  }
+  .slot-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    background: #000;
+  }
+  /* 캡션: 미디어 하단, 반투명, 페이지 하단 여백 중앙 감성 폰트 */
+  .slot-caption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px 12px 12px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.5));
+    color: rgba(255,255,255,0.95);
+    font-size: 0.8125rem;
+    text-align: center;
+    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
+    letter-spacing: 0.02em;
+  }
+  .spread-row {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    gap: 0;
+    min-height: 280px;
+  }
+  .spread-half {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .spread-half .page-content {
+    padding: 10% 8%;
+    flex: 1;
+    width: 100%;
+  }
+  .spread-half .media-frame {
+    max-width: 100%;
+  }
+  .spread-half-blank .page-content {
+    background: transparent;
+  }
+  .spread-half-blank .media-frame-placeholder {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .media-frame-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 0.875rem;
+    background: #e5e7eb;
+  }
+  .slot-caption-outer {
+    margin-top: 8px;
+    text-align: center;
+    color: #374151;
+    font-size: 0.875rem;
+    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
+  }
+  .click-zone {
+    position: absolute;
+    top: 0;
+    bottom: 80px;
+    z-index: 5;
+    cursor: pointer;
+  }
+  .click-zone.prev {
+    left: 0;
+    width: 40%;
+  }
+  .click-zone.next {
+    right: 0;
+    width: 40%;
+  }
+  .thumb-bar {
+    display: flex;
+    gap: 10px;
+    padding: 12px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  .thumb-bar::-webkit-scrollbar {
+    height: 6px;
+  }
+  .thumb-bar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  .thumb-bar::-webkit-scrollbar-thumb {
+    background: #c5c5c5;
+    border-radius: 3px;
+  }
+  .thumb-bar.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .thumb-bar.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .thumb-item {
+    flex-shrink: 0;
+    width: 72px;
+    cursor: pointer;
+    border: 4px solid transparent;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #e5e7eb;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .thumb-item.active {
+    border-color: #4f46e5;
+    border-width: 4px;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.35);
+  }
+  .thumb-item .thumb-inner {
+    aspect-ratio: 9/16;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* 스프레드 전체 비율: 좌·우 두 페이지(각 9:16)가 나란히 = 18:16 = 9:8 */
+  .thumb-item .thumb-spread {
+    display: flex;
+    width: 100%;
+    aspect-ratio: 18 / 16;
+  }
+  .thumb-item .thumb-spread-half {
+    flex: 1;
+    min-width: 0;
+    background: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .thumb-item .thumb-spread-half.filled {
+    padding: 0;
+    background: #1a1a1a;
+  }
+  .thumb-item .thumb-spread-half.filled img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .thumb-item .thumb-spread-half.thumb-video-wrap {
+    background: #374151;
+  }
+  .thumb-item .thumb-spread-half.thumb-video-wrap .thumb-video-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .thumb-item .thumb-spread-half.blank {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .thumb-item .thumb-spread-half.filled {
+    position: relative;
+  }
+  .thumb-play-icon {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .thumb-label {
+    font-size: 10px;
+    text-align: center;
+    padding: 2px 0;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+  .thumb-item.active .thumb-label {
+    color: #4f46e5;
+    font-weight: 600;
+  }
+  .page-indicator {
+    text-align: center;
+    padding: 8px 0;
+    font-size: 0.875rem;
+    color: #4b5563;
+  }
+  @media (max-width: 768px) {
+    .spread-row {
+      flex-direction: column;
+    }
+    .spread-half {
+      width: 100%;
+    }
+    .spread-half .page-content {
+      padding: 10% 12%;
+    }
+    .page-display {
+      max-width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-4">
+  <h1 class="text-lg font-semibold text-gray-800 text-center mb-2 truncate">Digital Album — {{ project_title }}</h1>
+
+  <div id="flipbookRoot" class="flipbook-wrap">
+    <div id="loadingState" class="text-center py-16 text-gray-500">
+      앨범을 불러오는 중...
+    </div>
+    <div id="errorState" class="text-center py-16 text-red-600 hidden">
+      앨범을 불러올 수 없습니다.
+    </div>
+    <div id="flipbookState" class="hidden">
+      <div class="flipbook-inner">
+        <div id="clickPrev" class="click-zone prev" title="이전"></div>
+        <div id="clickNext" class="click-zone next" title="다음"></div>
+        <div id="pageDisplay" class="page-display"></div>
+      </div>
+      <p id="pageIndicator" class="page-indicator"></p>
+      <div id="thumbBar" class="thumb-bar hide-scrollbar"></div>
+    </div>
+  </div>
+
+  <div class="flex gap-3 mt-6">
+    <button type="button" id="btnSave" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-300 font-medium hover:bg-gray-50 transition-colors">
+      앨범 저장
+    </button>
+    <a href="/" class="flex-1 py-3 px-4 rounded-lg border-2 border-indigo-600 text-indigo-600 font-medium hover:bg-indigo-50 text-center transition-colors">
+      내 앨범 관리
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const projectId = "{{ project_id }}";
+  if (!projectId) {
+    document.getElementById("loadingState").classList.add("hidden");
+    document.getElementById("errorState").classList.remove("hidden");
+    document.getElementById("errorState").textContent = "project_id가 없습니다.";
+    return;
+  }
+
+  function toRawUrl(path) {
+    if (!path) return "";
+    const match = path.match(/^storage\/raw\/[^/]+\/(.+)$/);
+    if (match) return "/raw/" + projectId + "/" + match[1];
+    return path.startsWith("/") ? path : "/raw/" + projectId + "/" + path;
+  }
+
+  function isVideoPath(path) {
+    if (!path) return false;
+    return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(path);
+  }
+
+  function slotHtml(mediaPath, styles, caption, fileType) {
+    const url = toRawUrl(mediaPath);
+    const isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
+    const needsBlur = !isVideo && styles && styles.needs_blur;
+    const hasBlurClass = needsBlur ? " has-blur" : "";
+    const blurPart = isVideo ? "" : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" />';
+    const captionPart = caption
+      ? '<div class="slot-caption">' + escapeHtml(caption) + "</div>"
+      : "";
+    const mediaPart = isVideo
+      ? '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="auto"></video>'
+      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" />';
+    return (
+      '<div class="media-frame' + hasBlurClass + '">' +
+      blurPart +
+      mediaPart +
+      captionPart +
+      "</div>"
+    );
+  }
+
+  function applyLandscapeBlur(container) {
+    if (!container) return;
+    var frames = container.querySelectorAll(".media-frame:not(.has-blur) img.slot-img");
+    frames.forEach(function (img) {
+      function check() {
+        if (img.naturalWidth && img.naturalHeight && img.naturalWidth > img.naturalHeight) {
+          var frame = img.closest(".media-frame");
+          if (frame) frame.classList.add("has-blur");
+        }
+      }
+      if (img.complete) check();
+      else img.addEventListener("load", check);
+    });
+  }
+
+  var albumVideoObserver = null;
+  function setupVideoInPage(container) {
+    if (!container) return;
+    container.querySelectorAll(".media-frame video.slot-video").forEach(function (video) {
+      video.addEventListener("click", function (e) { e.stopPropagation(); });
+      video.closest(".media-frame").addEventListener("click", function (e) { e.stopPropagation(); });
+      if (!albumVideoObserver) {
+        albumVideoObserver = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              var v = entry.target;
+              if (entry.isIntersecting) {
+                v.play().catch(function () {});
+              } else {
+                v.pause();
+              }
+            });
+          },
+          { threshold: 0.5, root: null }
+        );
+      }
+      albumVideoObserver.observe(video);
+    });
+  }
+  function disconnectVideoObserver() {
+    if (albumVideoObserver) {
+      albumVideoObserver.disconnect();
+    }
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function getPageLabel(page, index, total) {
+    if (page.type === "front") return "앞표지";
+    if (page.type === "back") return "뒷표지";
+    if (page.type === "spread") {
+      var leftPage = 2 * (index - 1) + 1;
+      var rightPage = 2 * (index - 1) + 2;
+      return leftPage + " / " + rightPage;
+    }
+    return (index + 1) + " / " + total;
+  }
+
+  function renderPageContent(page, index, total) {
+    const label = getPageLabel(page, index, total);
+    if (page.type === "front") {
+      var leftHtml =
+        '<div class="spread-half spread-half-blank">' +
+        '<div class="page-content">' +
+        '<div class="media-frame media-frame-placeholder"></div>' +
+        "</div></div>";
+      var rightHtml =
+        '<div class="spread-half">' +
+        '<div class="page-content">' +
+        slotHtml(page.right, (page.styles && page.styles.right) || {}, "", (page.file_types && page.file_types.right) || "") +
+        (page.title ? '<div class="slot-caption slot-caption-outer">' + escapeHtml(page.title) + "</div>" : "") +
+        "</div></div>";
+      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
+    }
+    if (page.type === "back") {
+      var leftHtml =
+        '<div class="spread-half">' +
+        '<div class="page-content">' +
+        slotHtml(page.left, (page.styles && page.styles.left) || {}, page.caption || "", (page.file_types && page.file_types.left) || "") +
+        "</div></div>";
+      var rightHtml =
+        '<div class="spread-half spread-half-blank">' +
+        '<div class="page-content">' +
+        '<div class="media-frame media-frame-placeholder"></div>' +
+        "</div></div>";
+      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
+    }
+    if (page.type === "spread") {
+      const leftHtml =
+        '<div class="spread-half">' +
+        '<div class="page-content">' +
+        (page.left
+          ? slotHtml(
+              page.left,
+              (page.styles && page.styles.left) || {},
+              (page.captions && page.captions.left) || "",
+              (page.file_types && page.file_types.left) || ""
+            )
+          : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
+        "</div></div>";
+      const rightHtml =
+        '<div class="spread-half">' +
+        '<div class="page-content">' +
+        (page.right
+          ? slotHtml(
+              page.right,
+              (page.styles && page.styles.right) || {},
+              (page.captions && page.captions.right) || "",
+              (page.file_types && page.file_types.right) || ""
+            )
+          : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
+        "</div></div>";
+      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
+    }
+    return "";
+  }
+
+  let layout = null;
+  let currentIndex = 0;
+
+  function showPage(index) {
+    if (!layout || !layout.pages || !layout.pages.length) return;
+    const pages = layout.pages;
+    currentIndex = Math.max(0, Math.min(index, pages.length - 1));
+    const page = pages[currentIndex];
+    const display = document.getElementById("pageDisplay");
+    disconnectVideoObserver();
+    display.innerHTML = renderPageContent(page, currentIndex, pages.length);
+    applyLandscapeBlur(display);
+    setupVideoInPage(display);
+    document.getElementById("pageIndicator").textContent =
+      getPageLabel(page, currentIndex, pages.length) + " (" + (currentIndex + 1) + " / " + pages.length + ")";
+    document.querySelectorAll(".thumb-item").forEach(function (el, i) {
+      el.classList.toggle("active", i === currentIndex);
+    });
+    var bar = document.getElementById("thumbBar");
+    var activeThumb = bar && bar.querySelector(".thumb-item.active");
+    if (activeThumb) {
+      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }
+
+  function goNext() {
+    if (!layout || !layout.pages || currentIndex >= layout.pages.length - 1) return;
+    showPage(currentIndex + 1);
+  }
+
+  function goPrev() {
+    if (!layout || !layout.pages || currentIndex <= 0) return;
+    showPage(currentIndex - 1);
+  }
+
+  function thumbHalfFilled(url, isVideo) {
+    if (isVideo) {
+      return '<div class="thumb-spread-half filled thumb-video-wrap">' +
+        '<video class="thumb-video-preview" src="' + url + '" muted playsinline preload="metadata"></video>' +
+        '<span class="thumb-play-icon">&#9654;</span></div>';
+    }
+    return '<div class="thumb-spread-half filled">' +
+      '<img src="' + url + '" alt="" loading="lazy" />' + '</div>';
+  }
+  function isVideoType(ft) {
+    return (ft && ft.toLowerCase() === "video") || false;
+  }
+  function buildThumbnailBar() {
+    const bar = document.getElementById("thumbBar");
+    bar.innerHTML = "";
+    const pages = layout.pages;
+    pages.forEach(function (page, i) {
+      const label = getPageLabel(page, i, pages.length);
+      var thumbInner = "";
+      if (page.type === "front") {
+        var r = page.right ? toRawUrl(page.right) : "";
+        var rVideo = isVideoType((page.file_types && page.file_types.right)) || isVideoPath(page.right);
+        thumbInner =
+          '<div class="thumb-spread">' +
+          '<div class="thumb-spread-half blank"></div>' +
+          (r ? thumbHalfFilled(r, rVideo) : '<div class="thumb-spread-half"></div>') +
+          "</div>";
+      } else if (page.type === "back") {
+        var l = page.left ? toRawUrl(page.left) : "";
+        var lVideo = isVideoType((page.file_types && page.file_types.left)) || isVideoPath(page.left);
+        thumbInner =
+          '<div class="thumb-spread">' +
+          (l ? thumbHalfFilled(l, lVideo) : '<div class="thumb-spread-half"></div>') +
+          '<div class="thumb-spread-half blank"></div>' +
+          "</div>";
+      } else {
+        var lUrl = (page.type === "spread" && page.left) ? toRawUrl(page.left) : "";
+        var rUrl = (page.type === "spread" && page.right) ? toRawUrl(page.right) : "";
+        var lVideo = isVideoType((page.file_types && page.file_types.left)) || isVideoPath(page.left);
+        var rVideo = isVideoType((page.file_types && page.file_types.right)) || isVideoPath(page.right);
+        thumbInner =
+          '<div class="thumb-spread">' +
+          (lUrl ? thumbHalfFilled(lUrl, lVideo) : '<div class="thumb-spread-half blank"></div>') +
+          (rUrl ? thumbHalfFilled(rUrl, rVideo) : '<div class="thumb-spread-half blank"></div>') +
+          "</div>";
+      }
+      const div = document.createElement("div");
+      div.className = "thumb-item" + (i === 0 ? " active" : "");
+      div.dataset.index = String(i);
+      div.innerHTML = thumbInner + '<div class="thumb-label">' + escapeHtml(label) + "</div>";
+      div.addEventListener("click", function () {
+        if (i === currentIndex) return;
+        showPage(i);
+      });
+      bar.appendChild(div);
+    });
+  }
+
+  fetch("/outputs/" + encodeURIComponent(projectId) + "/album_layout.json")
+    .then(function (r) {
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    })
+    .then(function (data) {
+      layout = data;
+      document.getElementById("loadingState").classList.add("hidden");
+      if (!data.pages || !data.pages.length) {
+        document.getElementById("errorState").classList.remove("hidden");
+        document.getElementById("errorState").textContent = "앨범 페이지가 비어 있습니다.";
+        return;
+      }
+      document.getElementById("flipbookState").classList.remove("hidden");
+      buildThumbnailBar();
+      showPage(0);
+    })
+    .catch(function (err) {
+      document.getElementById("loadingState").classList.add("hidden");
+      document.getElementById("errorState").classList.remove("hidden");
+      document.getElementById("errorState").textContent = "앨범을 불러올 수 없습니다.";
+      console.warn("album_layout.json load failed:", err);
+    });
+
+  document.getElementById("clickNext").addEventListener("click", function (e) {
+    e.preventDefault();
+    goNext();
+  });
+  document.getElementById("clickPrev").addEventListener("click", function (e) {
+    e.preventDefault();
+    goPrev();
+  });
+
+  document.getElementById("pageDisplay").addEventListener("click", function (e) {
+    if (e.target.closest("video") || (e.target.closest(".media-frame") && e.target.closest(".media-frame").querySelector("video"))) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    if (e.clientX < mid) goPrev();
+    else goNext();
+  });
+
+  document.getElementById("btnSave").addEventListener("click", function () {
+    console.log("앨범 저장 (API 연동 예정)");
+  });
+})();
+</script>
+{% endblock %}
