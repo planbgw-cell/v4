@@ -18,9 +18,10 @@ def create_project(
     title: str,
     mode: ProjectMode = ProjectMode.AI,
     status: str = "PENDING",
+    project_type: str = "video",
 ) -> Project:
     """새 프로젝트 생성."""
-    project = Project(title=title, mode=mode, status=status)
+    project = Project(title=title, mode=mode, status=status, project_type=project_type)
     db.add(project)
     db.commit()
     db.refresh(project)

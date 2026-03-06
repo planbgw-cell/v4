@@ -1,6 +1,9 @@
 """
 업로드 API: 프로젝트 생성 + 파일 저장 (Zero-Wait I/O, pathlib).
 사용자가 화면에서 드래그 앤 드롭으로 바꾼 순서가 그대로 order_index에 저장됨.
+
+🛡️ [Rule Set] Flairy v4.0 경로/프로세스 격리: 응답에 project_type 필수 반환.
+   클라이언트는 /progress/${project_type}/${project_id} 로 리다이렉트.
 """
 import uuid
 from pathlib import Path
@@ -52,6 +55,7 @@ async def api_upload(
     background_tasks: BackgroundTasks,
     title: str = Form(..., max_length=255),
     mode: str = Form(...),
+    project_type: str = Form("video"),
     files: list[UploadFile] = File(default=[]),
 ):
     """프로젝트 생성 후 파일을 storage/raw/{project_id}/ 에 저장하고 MediaFiles에 기록. 순서 유지."""
@@ -63,10 +67,14 @@ async def api_upload(
     if mode not in ("ai", "rule_based"):
         raise HTTPException(status_code=400, detail="mode는 'ai' 또는 'rule_based'여야 합니다.")
     project_mode = ProjectMode.AI if mode == "ai" else ProjectMode.RULE_BASED
+    if project_type not in ("video", "album"):
+        project_type = "video"
 
     db: Session = SessionLocal()
     try:
-        project = create_project(db, title=title, mode=project_mode, status="PENDING")
+        project = create_project(
+            db, title=title, mode=project_mode, status="PENDING", project_type=project_type
+        )
         project_id = project.id
     except Exception as e:
         db.rollback()
@@ -139,4 +147,4 @@ async def api_upload(
     if project_mode == ProjectMode.AI:
         background_tasks.add_task(run_ai_analysis, project_id)
 
-    return {"project_id": str(project_id)}
+    return {"project_id": str(project_id), "project_type": project_type}

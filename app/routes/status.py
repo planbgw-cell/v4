@@ -1,5 +1,8 @@
 """
 상태 조회 API: HTMX용 Partial HTML 반환.
+
+🛡️ [Rule Set] Flairy v4.0 경로/프로세스 격리: progress/viewer는 /progress/{type}/{id}, /viewer/{type}/{id} 사용.
+   본 API는 project_id만 사용하며, type은 페이지 URL에서 이미 결정된 상태.
 """
 from pathlib import Path
 from uuid import UUID

@@ -1,15 +1,63 @@
 {% extends "layouts/base.html" %}
 {% block title %}Digital Album - {{ project_title }} - Flairy{% endblock %}
+{% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}
 {% block head %}
-<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&family=Noto+Serif+KR:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
-  /* 포토북: 종이 배경 + 여백 + 9:16 프레임 */
+  /* v3 스타일: 문서 흐름 레이아웃, 높이는 콘텐츠에 맡김 */
+  .album-viewer-layout {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box;
+  }
+  /* [상단 섹션] 앨범 중앙 정렬·여백, 고정 높이 없음 */
+  .album-top-section {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding-top: 50px;
+    padding-bottom: 50px;
+    overflow: visible;
+  }
+  .album-top-section .flipbook-inner {
+    position: relative;
+    left: 0;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: min(900px, 95vw);
+  }
+  .album-top-section #bookContainer,
+  .album-top-section .book-container {
+    position: relative;
+    left: 0;
+  }
+  /* [하단 섹션] 문서 흐름상 앨범 아래, 고정 높이 없음 */
+  .album-bottom-section {
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+  /* 썸네일 바: 스크롤은 #thumbBar에서만, 앨범과 동일 폭으로 중앙 정렬 */
+  .thumbnail-bar-wrapper {
+    width: 100%;
+    max-width: min(900px, 95vw);
+    margin-left: auto;
+    margin-right: auto;
+    overflow: visible;
+  }
+  .album-viewer-page {
+    max-width: 100vw;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 2rem;
+  }
   .flipbook-wrap {
-    overflow: hidden;
-    min-height: 60vh;
+    max-width: 100vw;
+    width: 100%;
+    overflow: visible;
   }
   .flipbook-inner {
-    position: relative;
     width: 100%;
     max-width: min(900px, 95vw);
     margin: 0 auto;
@@ -24,7 +72,6 @@
     overflow: visible;
     background: #ffffff;
   }
-  /* 페이지 내부 여백: 상하좌우 10~15% */
   .page-content {
     padding: 12% 14%;
     display: flex;
@@ -35,10 +82,21 @@
     box-sizing: border-box;
   }
   .spread-row .page-content {
-    flex-direction: row;
-    gap: 4%;
+    flex-direction: column;
+    gap: 0;
   }
-  /* 9:16 전용 프레임: 비율 유지 + 종이에 박힌 듯한 입체감 */
+  /* 공통: 모바일·3D 공용 미디어 컨테이너 (9:16, overflow, 캡션 기준) */
+  .album-media-container {
+    aspect-ratio: 9 / 16;
+    max-width: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+  .album-media-container .slot-caption {
+    text-align: center;
+    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
+  }
+  /* 9:16 전용 프레임: 황금비율 가상 액자 + 종이/사진 경계 (Task 2·3) */
   .media-frame {
     aspect-ratio: 9 / 16;
     width: 100%;
@@ -46,22 +104,29 @@
     position: relative;
     overflow: hidden;
     border-radius: 4px;
-    box-shadow: inset 0 0 14px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
+    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     background: #1a1a1a;
     flex-shrink: 0;
   }
   .slot-blur {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    filter: blur(22px) brightness(0.75);
+    filter: blur(25px) brightness(0.75);
     transform: scale(1.15);
   }
   .media-frame:not(.has-blur) .slot-blur {
     visibility: hidden;
     pointer-events: none;
+  }
+  /* 블러: 미디어 영역(.media-frame) 범위 내에서만 표시, 여백으로 넘치지 않음 */
+  .media-frame.has-blur {
+    overflow: hidden;
+    contain: paint;
   }
   .media-frame.has-blur .slot-blur {
     visibility: visible;
@@ -86,19 +151,16 @@
     object-position: center;
     background: #000;
   }
-  /* 캡션: 미디어 하단, 반투명, 페이지 하단 여백 중앙 감성 폰트 */
   .slot-caption {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    position: relative;
+    margin-top: 15px;
     padding: 10px 12px 12px;
+    text-align: center;
     background: linear-gradient(transparent, rgba(0,0,0,0.5));
     color: rgba(255,255,255,0.95);
-    font-size: 0.8125rem;
-    text-align: center;
-    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
-    letter-spacing: 0.02em;
+    font-size: 0.9rem;
+    font-family: "Playfair Display", "Noto Serif KR", serif;
+    letter-spacing: 0.05em;
   }
   .spread-row {
     display: flex;
@@ -108,21 +170,31 @@
     min-height: 280px;
   }
   .spread-half {
-    flex: 1;
-    position: relative;
+    flex: 0 0 50%;
+    width: 50%;
     min-width: 0;
+    overflow: hidden;
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
   }
   .spread-half .page-content {
-    padding: 10% 8%;
+    padding-top: 10%;
+    padding-left: 12%;
+    padding-right: 12%;
+    padding-bottom: 18%;
+    box-sizing: border-box;
     flex: 1;
     width: 100%;
+    min-width: 0;
+    overflow: hidden;
   }
   .spread-half .media-frame {
     max-width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
   }
   .spread-half-blank .page-content {
     background: transparent;
@@ -130,6 +202,27 @@
   .spread-half-blank .media-frame-placeholder {
     background: #ffffff;
     border: 1px solid rgba(0,0,0,0.06);
+  }
+  /* 앞표지: 우측 스프레드에 미디어 중앙 배치 */
+  .spread-half-cover-right {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .spread-half-cover-right .page-content-cover-right {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: 10%;
+    padding-left: 12%;
+    padding-right: 12%;
+    padding-bottom: 18%;
+    box-sizing: border-box;
+  }
+  .spread-half-cover-right .media-frame {
+    max-width: 100%;
   }
   .media-frame-placeholder {
     display: flex;
@@ -143,8 +236,13 @@
     margin-top: 8px;
     text-align: center;
     color: #374151;
-    font-size: 0.875rem;
-    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
+    font-size: 0.9rem;
+    font-family: "Playfair Display", "Noto Serif KR", serif;
+    letter-spacing: 0.05em;
+  }
+  /* 임시: 스프레드/책등 테두리 - 제거 가능 */
+  .spread-row .spread-half:first-of-type {
+    border-right: 1px dashed rgba(0,0,0,0.35);
   }
   .click-zone {
     position: absolute;
@@ -161,6 +259,127 @@
     right: 0;
     width: 40%;
   }
+
+  /* ----- 3D FlipBook: 책 컨테이너 및 리프 ----- */
+  .book-container {
+    perspective: 2000px;
+    position: relative;
+    z-index: 10;
+    min-height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+  }
+  .book-body {
+    position: relative;
+    width: min(900px, 95vw);
+    height: 360px;
+    transform-style: preserve-3d;
+    overflow: visible;
+  }
+  .book-body::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 1px dashed rgba(0,0,0,0.35);
+    pointer-events: none;
+    /* 임시: 책등(중앙) 세로선 - 제거 가능 */
+  }
+  /* Spine-Center: 리프는 책의 정확히 50% 너비, 중앙(left:50%)에서 시작, 회전축 left center */
+  .leaf {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 50%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform-origin: left center;
+    transition: transform 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+    pointer-events: none;
+  }
+  .leaf .leaf-inner {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    pointer-events: auto;
+  }
+  .leaf.flipped {
+    transform: rotateY(-180deg);
+  }
+  .leaf-face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    overflow: hidden;
+    background: #F9F9F9;
+    box-shadow: inset 5px 0 10px rgba(0,0,0,0.05), 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .leaf-face.front {
+    border-radius: 0 4px 4px 0;
+  }
+  .leaf-face.back {
+    transform: rotateY(180deg);
+    border-radius: 4px 0 0 4px;
+  }
+  #bookBody .leaf-face-content {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 10% 12% 18%;
+    box-sizing: border-box;
+  }
+  #bookBody .leaf-face .media-frame,
+  #bookBody .leaf-face .media-frame-placeholder {
+    aspect-ratio: 9 / 16;
+    width: 100%;
+    max-width: 100%;
+    max-height: 80%;
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  /* 스파인 그림자: A4 높이에 맞춰 리프 끝까지 연장 (top/bottom 0) */
+  .leaf-spine-shadow {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    background: linear-gradient(90deg, rgba(0,0,0,0.25), transparent);
+    pointer-events: none;
+  }
+  .leaf.flipped .leaf-spine-shadow {
+    left: auto;
+    right: 0;
+    background: linear-gradient(270deg, rgba(0,0,0,0.25), transparent);
+  }
+  .book-floor {
+    position: absolute;
+    left: 50%;
+    bottom: -20px;
+    width: 120%;
+    height: 24px;
+    transform: translateX(-50%) rotateX(70deg);
+    background: linear-gradient(180deg, rgba(0,0,0,0.08), transparent);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
   .thumb-bar {
     display: flex;
     gap: 10px;
@@ -217,9 +436,11 @@
     width: 100%;
     aspect-ratio: 18 / 16;
   }
+  /* 스프레드 한 페이지와 동일 비율(9:16)로 썸네일 절반 고정 */
   .thumb-item .thumb-spread-half {
     flex: 1;
     min-width: 0;
+    aspect-ratio: 9 / 16;
     background: #e5e7eb;
     display: flex;
     align-items: center;
@@ -282,6 +503,12 @@
     color: #4f46e5;
     font-weight: 600;
   }
+  /* 페이지 인디케이터: 스프레드·썸네일과 같은 폭/중앙 정렬 */
+  .album-bottom-section .page-indicator {
+    max-width: min(900px, 95vw);
+    margin-left: auto;
+    margin-right: auto;
+  }
   .page-indicator {
     text-align: center;
     padding: 8px 0;
@@ -296,42 +523,73 @@
       width: 100%;
     }
     .spread-half .page-content {
-      padding: 10% 12%;
+      padding-top: 10%;
+      padding-left: 12%;
+      padding-right: 12%;
+      padding-bottom: 18%;
     }
     .page-display {
       max-width: 100%;
+    }
+  }
+
+  /* 3D Flip: 데스크톱에서만 책 모드, 모바일에서 단일 페이지 (특이도로 전환, !important 미사용) */
+  @media (max-width: 767px) {
+    .flipbook-inner .book-container.book-mode {
+      display: none;
+    }
+    .flipbook-inner .page-display.single-mode {
+      display: block;
+    }
+  }
+  @media (min-width: 768px) {
+    .flipbook-inner .book-container.book-mode {
+      display: flex;
+    }
+    .flipbook-inner .page-display.single-mode {
+      display: none;
     }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 py-4">
-  <h1 class="text-lg font-semibold text-gray-800 text-center mb-2 truncate">Digital Album — {{ project_title }}</h1>
+<div class="album-viewer-page">
+  <h1 class="text-lg font-semibold text-gray-800 text-center py-2 truncate">Digital Album — {{ project_title }}</h1>
 
-  <div id="flipbookRoot" class="flipbook-wrap">
+  <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
     <div id="loadingState" class="text-center py-16 text-gray-500">
       앨범을 불러오는 중...
     </div>
     <div id="errorState" class="text-center py-16 text-red-600 hidden">
       앨범을 불러올 수 없습니다.
     </div>
-    <div id="flipbookState" class="hidden">
-      <div class="flipbook-inner">
-        <div id="clickPrev" class="click-zone prev" title="이전"></div>
-        <div id="clickNext" class="click-zone next" title="다음"></div>
-        <div id="pageDisplay" class="page-display"></div>
+    <div id="flipbookState" class="hidden album-viewer-layout">
+      <div class="album-top-section">
+        <div class="flipbook-inner">
+          <div id="clickPrev" class="click-zone prev" title="이전"></div>
+          <div id="clickNext" class="click-zone next" title="다음"></div>
+          <div id="bookContainer" class="book-container book-mode">
+            <div class="book-floor" aria-hidden="true"></div>
+            <div id="bookBody" class="book-body"></div>
+          </div>
+          <div id="pageDisplay" class="page-display single-mode"></div>
+        </div>
       </div>
-      <p id="pageIndicator" class="page-indicator"></p>
-      <div id="thumbBar" class="thumb-bar hide-scrollbar"></div>
+      <div class="album-bottom-section">
+        <p id="pageIndicator" class="page-indicator"></p>
+        <div class="thumbnail-bar-wrapper">
+          <div id="thumbBar" class="thumb-bar"></div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="flex gap-3 mt-6">
-    <button type="button" id="btnSave" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-300 font-medium hover:bg-gray-50 transition-colors">
+  <div class="footer-actions mt-8">
+    <button type="button" id="btnSave" class="btn-primary-viewer">
       앨범 저장
     </button>
-    <a href="/" class="flex-1 py-3 px-4 rounded-lg border-2 border-indigo-600 text-indigo-600 font-medium hover:bg-indigo-50 text-center transition-colors">
+    <a href="/" class="btn-secondary-viewer">
       내 앨범 관리
     </a>
   </div>
@@ -367,14 +625,12 @@
     const needsBlur = !isVideo && styles && styles.needs_blur;
     const hasBlurClass = needsBlur ? " has-blur" : "";
     const blurPart = isVideo ? "" : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" />';
-    const captionPart = caption
-      ? '<div class="slot-caption">' + escapeHtml(caption) + "</div>"
-      : "";
     const mediaPart = isVideo
       ? '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="auto"></video>'
       : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" />';
+    const captionPart = caption ? '<div class="slot-caption">' + escapeHtml(caption) + "</div>" : "";
     return (
-      '<div class="media-frame' + hasBlurClass + '">' +
+      '<div class="media-frame album-media-container' + hasBlurClass + '">' +
       blurPart +
       mediaPart +
       captionPart +
@@ -453,10 +709,11 @@
         '<div class="media-frame media-frame-placeholder"></div>' +
         "</div></div>";
       var rightHtml =
-        '<div class="spread-half">' +
-        '<div class="page-content">' +
-        slotHtml(page.right, (page.styles && page.styles.right) || {}, "", (page.file_types && page.file_types.right) || "") +
-        (page.title ? '<div class="slot-caption slot-caption-outer">' + escapeHtml(page.title) + "</div>" : "") +
+        '<div class="spread-half spread-half-cover-right">' +
+        '<div class="page-content page-content-cover-right">' +
+        (page.right
+          ? slotHtml(page.right, (page.styles && page.styles.right) || {}, page.title || "", (page.file_types && page.file_types.right) || "")
+          : '<div class="media-frame media-frame-placeholder"></div>') +
         "</div></div>";
       return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
     }
@@ -478,24 +735,14 @@
         '<div class="spread-half">' +
         '<div class="page-content">' +
         (page.left
-          ? slotHtml(
-              page.left,
-              (page.styles && page.styles.left) || {},
-              (page.captions && page.captions.left) || "",
-              (page.file_types && page.file_types.left) || ""
-            )
+          ? slotHtml(page.left, (page.styles && page.styles.left) || {}, (page.captions && page.captions.left) || "", (page.file_types && page.file_types.left) || "")
           : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
         "</div></div>";
       const rightHtml =
         '<div class="spread-half">' +
         '<div class="page-content">' +
         (page.right
-          ? slotHtml(
-              page.right,
-              (page.styles && page.styles.right) || {},
-              (page.captions && page.captions.right) || "",
-              (page.file_types && page.file_types.right) || ""
-            )
+          ? slotHtml(page.right, (page.styles && page.styles.right) || {}, (page.captions && page.captions.right) || "", (page.file_types && page.file_types.right) || "")
           : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
         "</div></div>";
       return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
@@ -506,25 +753,101 @@
   let layout = null;
   let currentIndex = 0;
 
-  function showPage(index) {
-    if (!layout || !layout.pages || !layout.pages.length) return;
-    const pages = layout.pages;
-    currentIndex = Math.max(0, Math.min(index, pages.length - 1));
-    const page = pages[currentIndex];
-    const display = document.getElementById("pageDisplay");
-    disconnectVideoObserver();
-    display.innerHTML = renderPageContent(page, currentIndex, pages.length);
-    applyLandscapeBlur(display);
-    setupVideoInPage(display);
+  function isDesktop() {
+    return typeof window !== "undefined" && window.innerWidth >= 768;
+  }
+
+  function slotFromPageHalf(page, side) {
+    var path, styles, caption, ft;
+    if (side === "right") {
+      path = page.right;
+      styles = (page.styles && page.styles.right) || {};
+      caption = (page.captions && page.captions.right) || (page.title || "") || "";
+      ft = (page.file_types && page.file_types.right) || "";
+    } else {
+      path = page.left;
+      styles = (page.styles && page.styles.left) || {};
+      caption = (page.captions && page.captions.left) || (page.caption || "") || "";
+      ft = (page.file_types && page.file_types.left) || "";
+    }
+    return path
+      ? slotHtml(path, styles, caption, ft)
+      : '<div class="media-frame media-frame-placeholder"></div>';
+  }
+
+  function buildLeaves() {
+    if (!layout || !layout.pages || layout.pages.length < 2) return;
+    var pages = layout.pages;
+    var totalLeaves = pages.length - 1;
+    var bookBody = document.getElementById("bookBody");
+    if (!bookBody) return;
+    bookBody.innerHTML = "";
+    for (var i = 0; i < totalLeaves; i++) {
+      var frontHtml = slotFromPageHalf(pages[i], "right");
+      var backHtml = slotFromPageHalf(pages[i + 1], "left");
+      var leaf = document.createElement("div");
+      leaf.className = "leaf";
+      leaf.dataset.leafIndex = String(i);
+      leaf.innerHTML =
+        '<div class="leaf-inner">' +
+        '<div class="leaf-face front">' +
+        '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
+        '<div class="leaf-face-content">' + frontHtml + "</div>" +
+        "</div>" +
+        '<div class="leaf-face back">' +
+        '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
+        '<div class="leaf-face-content">' + backHtml + "</div>" +
+        "</div>" +
+        "</div>";
+      bookBody.appendChild(leaf);
+    }
+    applyLandscapeBlur(bookBody);
+    setupVideoInPage(bookBody);
+  }
+
+  function syncLeavesState() {
+    if (!layout || !layout.pages) return;
+    var totalLeaves = layout.pages.length - 1;
+    if (totalLeaves <= 0) return;
+    var leaves = document.querySelectorAll("#bookBody .leaf");
+    for (var i = 0; i < leaves.length; i++) {
+      var leaf = leaves[i];
+      var isFlipped = i < currentIndex;
+      leaf.classList.toggle("flipped", isFlipped);
+      leaf.style.zIndex = isFlipped ? String(i) : String(totalLeaves - i);
+    }
+  }
+
+  function updateIndicatorAndThumb(index) {
+    if (!layout || !layout.pages) return;
+    var page = layout.pages[index];
+    var total = layout.pages.length;
     document.getElementById("pageIndicator").textContent =
-      getPageLabel(page, currentIndex, pages.length) + " (" + (currentIndex + 1) + " / " + pages.length + ")";
+      getPageLabel(page, index, total) + " (" + (index + 1) + " / " + total + ")";
     document.querySelectorAll(".thumb-item").forEach(function (el, i) {
-      el.classList.toggle("active", i === currentIndex);
+      el.classList.toggle("active", i === index);
     });
     var bar = document.getElementById("thumbBar");
     var activeThumb = bar && bar.querySelector(".thumb-item.active");
     if (activeThumb) {
       activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }
+
+  function showPage(index) {
+    if (!layout || !layout.pages || !layout.pages.length) return;
+    var pages = layout.pages;
+    currentIndex = Math.max(0, Math.min(index, pages.length - 1));
+    var page = pages[currentIndex];
+    updateIndicatorAndThumb(currentIndex);
+    if (isDesktop()) {
+      syncLeavesState();
+    } else {
+      var display = document.getElementById("pageDisplay");
+      disconnectVideoObserver();
+      display.innerHTML = renderPageContent(page, currentIndex, pages.length);
+      applyLandscapeBlur(display);
+      setupVideoInPage(display);
     }
   }
 
@@ -611,6 +934,7 @@
       }
       document.getElementById("flipbookState").classList.remove("hidden");
       buildThumbnailBar();
+      buildLeaves();
       showPage(0);
     })
     .catch(function (err) {
@@ -631,14 +955,28 @@
 
   document.getElementById("pageDisplay").addEventListener("click", function (e) {
     if (e.target.closest("video") || (e.target.closest(".media-frame") && e.target.closest(".media-frame").querySelector("video"))) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mid = rect.left + rect.width / 2;
+    var rect = e.currentTarget.getBoundingClientRect();
+    var mid = rect.left + rect.width / 2;
+    if (e.clientX < mid) goPrev();
+    else goNext();
+  });
+
+  document.getElementById("bookContainer").addEventListener("click", function (e) {
+    if (!isDesktop()) return;
+    if (e.target.closest("video") || (e.target.closest(".media-frame") && e.target.closest(".media-frame").querySelector("video"))) return;
+    var rect = e.currentTarget.getBoundingClientRect();
+    var mid = rect.left + rect.width / 2;
     if (e.clientX < mid) goPrev();
     else goNext();
   });
 
   document.getElementById("btnSave").addEventListener("click", function () {
     console.log("앨범 저장 (API 연동 예정)");
+  });
+
+  window.addEventListener("resize", function () {
+    if (!layout || !layout.pages) return;
+    showPage(currentIndex);
   });
 })();
 </script>

@@ -24,6 +24,7 @@ class Project(Base):
     title = Column(String(255), nullable=False)
     mode = Column(Enum(ProjectMode), nullable=False)
     status = Column(String(50), nullable=False, default="PENDING")
+    project_type = Column(String(50), nullable=False, default="video")
     output_path = Column(String(512), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     logs = Column(Text, nullable=True)

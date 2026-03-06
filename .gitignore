@@ -11,8 +11,6 @@ postgres_data/
 __pycache__/
 .env
 .env.*
-*.env
-
-# OS
+*.env# OS
 .DS_Store
 Thumbs.db

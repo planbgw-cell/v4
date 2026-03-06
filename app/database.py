@@ -48,6 +48,17 @@ def ensure_ai_progress_columns() -> None:
         pass
 
 
+def ensure_project_type_column() -> None:
+    """projects에 project_type 컬럼이 없으면 추가. 기존 행에는 DEFAULT 'video' 적용."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(50) NOT NULL DEFAULT 'video'"
+            ))
+    except Exception:
+        pass
+
+
 def get_db():
     """FastAPI 의존성용: 요청마다 세션 생성 후 종료 시 close."""
     db = SessionLocal()

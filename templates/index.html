@@ -470,6 +470,7 @@
     const formData = new FormData();
     formData.append('title', title);
     formData.append('mode', mode);
+    formData.append('project_type', actionType === 'album' ? 'album' : 'video');
     for (let i = 0; i < fileList.length; i++) {
       formData.append('files', fileList[i].file);
     }
@@ -505,11 +506,13 @@
           markAllError('project_id가 응답에 없습니다.');
           return;
         }
+        const projectType = (data.project_type === 'album' || data.project_type === 'video')
+          ? data.project_type
+          : (actionType === 'album' ? 'album' : 'video');
         const debugMode = document.getElementById('debugMode').checked;
         const url =
-          '/progress?project_id=' +
-          encodeURIComponent(projectId) +
-          (debugMode ? '&debug=1' : '');
+          '/progress/' + projectType + '/' + encodeURIComponent(projectId) +
+          (debugMode ? '?debug=1' : '');
         window.location.href = url;
       } else {
         let message = '업로드 실패';
