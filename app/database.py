@@ -1,6 +1,6 @@
 """
 SQLAlchemy 엔진 및 세션 설정.
-.env의 DATABASE_URL을 사용하며, Supabase 등 다른 PostgreSQL 호스트로 전환 시 URL만 변경하면 됨.
+.env의 DATABASE_URL으로 로컬 PostgreSQL 15 연결.
 """
 import os
 
@@ -54,6 +54,17 @@ def ensure_project_type_column() -> None:
         with engine.begin() as conn:
             conn.execute(text(
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(50) NOT NULL DEFAULT 'video'"
+            ))
+    except Exception:
+        pass
+
+
+def ensure_user_id_column() -> None:
+    """projects에 user_id FK 컬럼이 없으면 추가 (users 테이블 선행 필요)."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL"
             ))
     except Exception:
         pass

@@ -13,43 +13,63 @@
       max-width: 600px;
       margin: 0 auto;
       display: flex;
-      gap: 1rem;
+      gap: 1.5rem;
       justify-content: center;
       flex-shrink: 0;
     }
+    /* 뷰어 하단 버튼: 플로팅 제거, 영상/앨범 바로 아래 문서 흐름 배치 */
+    .floating-controls {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 0 4rem 0;
+      background: transparent;
+      backdrop-filter: none;
+      border-top: none;
+    }
     .btn-primary-viewer {
-      flex: 1;
-      padding: 0.75rem 1.5rem;
-      border-radius: 9999px;
-      border: 2px solid #d1d5db;
-      font-weight: 500;
-      background: #fff;
-      color: inherit;
+      min-width: 12rem;
+      padding: 1rem 1.5rem;
+      border-radius: 1rem;
+      font-weight: 700;
+      background: #6366f1;
+      color: #fff;
       cursor: pointer;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.2), 0 4px 6px -2px rgba(99, 102, 241, 0.1);
+      border: none;
     }
     .btn-primary-viewer:hover {
-      background: #f9fafb;
-      transform: scale(1.05);
+      background: #4f46e5;
+      transform: scale(1.02);
+    }
+    .btn-primary-viewer:active {
+      transform: scale(0.98);
     }
     .btn-secondary-viewer {
-      flex: 1;
-      padding: 0.75rem 1.5rem;
-      border-radius: 9999px;
-      border: 2px solid #4f46e5;
-      font-weight: 500;
+      min-width: 12rem;
+      padding: 1rem 1.5rem;
+      border-radius: 1rem;
+      font-weight: 700;
       background: #fff;
-      color: #4f46e5;
+      color: #475569;
       text-align: center;
       text-decoration: none;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #e2e8f0;
+      cursor: pointer;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     }
     .btn-secondary-viewer:hover {
-      background: #eef2ff;
-      transform: scale(1.05);
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+    .btn-secondary-viewer:active {
+      transform: scale(0.98);
     }
   </style>
   {% block head %}{% endblock %}

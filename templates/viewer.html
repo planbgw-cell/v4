@@ -1,82 +1,46 @@
 {% extends "layouts/base.html" %}
-{% block title %}{{ project_title }} - Flairy{% endblock %}
-{% block head %}
-<style>
-  /* 9:16 전용 (1080x1920 FHD 세로). 11:17/726:1122 등 레거시 비율 미사용 */
-  .player-9-16 {
-    aspect-ratio: 9 / 16;
-    width: 100%;
-    max-width: min(100%, calc(90vh * 9 / 16));
-    max-height: 90vh;
-    margin: 0 auto;
-    position: relative;
-    overflow: hidden;
-    background: #1a1a1a;
-  }
-  .player-blur {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    filter: blur(20px) brightness(0.7);
-    transform: scale(1.1);
-  }
-  /* object-fit: contain으로 9:16 영상 비율 유지, 찌그러짐 방지 */
-  .player-video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center center;
-  }
-  .player-video.portrait {
-    object-position: top center;
-  }
-</style>
-{% endblock %}
+{% block title %}Flairy - 디지털 앨범 서비스{% endblock %}
 
 {% block content %}
-<div class="max-w-md mx-auto px-4 py-6">
-  <h1 class="text-lg font-semibold text-gray-800 text-center mb-4 truncate">{{ project_title }}</h1>
-
-  {% if video_url %}
-  <div class="player-9-16 rounded-xl shadow-xl" id="playerContainer">
-    <video
-      class="player-blur"
-      id="blurLayer"
-      src="{{ video_url }}"
-      muted
-      loop
-      playsinline
-      preload="metadata"
-    ></video>
-    <video
-      class="player-video"
-      id="mainVideo"
-      src="{{ video_url }}"
-      controls
-      playsinline
-      preload="metadata"
-    ></video>
+{% include "partials/_viewer_styles.html" %}
+{% if mode != 'mypage' %}{% include "partials/viewer_header.html" %}{% endif %}
+<main id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" class="pb-10 min-h-screen bg-[#F8FAFC]">
+  <div class="viewer-stage">
+    <h1 class="text-lg font-semibold text-gray-800 text-center mb-2 truncate">{{ project_title }}</h1>
+    <div class="content-video">
+      {% if video_url %}
+      <div class="player-9-16 w-full h-full" id="playerContainer">
+        <video
+          class="player-blur"
+          id="blurLayer"
+          src="{{ video_url }}"
+          muted
+          loop
+          playsinline
+          preload="metadata"
+        ></video>
+        <video
+          class="player-video"
+          id="mainVideo"
+          src="{{ video_url }}"
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+      </div>
+      {% else %}
+      <div class="player-9-16 w-full h-full bg-gray-200 flex items-center justify-center text-gray-500">
+        영상이 아직 없습니다.
+      </div>
+      {% endif %}
+    </div>
   </div>
-  {% else %}
-  <div class="player-9-16 rounded-xl bg-gray-200 flex items-center justify-center text-gray-500">
-    영상이 아직 없습니다.
-  </div>
-  {% endif %}
-
-  <div class="footer-actions mt-6">
-    <button type="button" id="btnSave" class="btn-primary-viewer">
-      영상 저장
-    </button>
-    <a href="/" class="btn-secondary-viewer">
-      내 앨범 관리
-    </a>
-  </div>
-</div>
-{% endblock %}
+</main>
+<footer class="floating-controls">
+  {% include "partials/_viewer_actions.html" %}
+</footer>
+{% include "partials/auth_modal.html" %}
+{% endblock content %}
 
 {% block scripts %}
 {% if video_url %}
@@ -95,10 +59,159 @@
   mainVideo.addEventListener("loadedmetadata", setPortraitClass);
   if (mainVideo.readyState >= 1) setPortraitClass();
 
-  document.getElementById("btnSave").addEventListener("click", function () {
-    console.log("영상 저장 (API 연동 예정)");
-  });
 })();
 </script>
 {% endif %}
-{% endblock %}
+<script>
+(function () {
+  const root = document.getElementById("viewerRoot");
+  const projectId = root && root.getAttribute("data-project-id");
+  const authModal = document.getElementById("authModal");
+  const authModalBackdrop = document.getElementById("authModalBackdrop");
+  const authModalLater = document.getElementById("authModalLater");
+  const authModalLoginForm = document.getElementById("authModalLoginForm");
+  const authModalSignupBtn = document.getElementById("authModalSignupBtn");
+  const authModalFormError = document.getElementById("authModalFormError");
+  const authModalEmail = document.getElementById("authModalEmail");
+  const authModalPassword = document.getElementById("authModalPassword");
+
+  function showAuthModal() { if (authModal) authModal.classList.remove("hidden"); showLoginPanel(); }
+  function hideAuthModal() { if (authModal) authModal.classList.add("hidden"); }
+
+  var headerAuthBtn = document.getElementById("headerAuthBtn");
+  function updateHeaderAuthState() {
+    if (!headerAuthBtn) return;
+    fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
+      if (r.ok) window.location.reload();
+      else {
+        headerAuthBtn.textContent = "로그인";
+        headerAuthBtn.onclick = onSignInClick;
+      }
+    });
+  }
+  function onSignInClick() { showAuthModal(); }
+  updateHeaderAuthState();
+  function showFormError(msg) { if (authModalFormError) { authModalFormError.textContent = msg || ""; authModalFormError.classList.toggle("hidden", !msg); } }
+  function detailToMessage(d) {
+    if (!d || d.detail === undefined) return "요청에 실패했습니다.";
+    if (typeof d.detail === "string") return d.detail;
+    if (Array.isArray(d.detail) && d.detail[0]) return d.detail[0].msg || (d.detail[0].loc && d.detail[0].loc.join(" ")) || "입력값을 확인해 주세요.";
+    return "요청에 실패했습니다.";
+  }
+  function showLoginPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.remove("hidden");
+    if (sp) sp.classList.add("hidden");
+    showFormError("");
+  }
+  function showSignupPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.add("hidden");
+    if (sp) sp.classList.remove("hidden");
+    showFormError("");
+  }
+
+  function claimProjectId() {
+    if (!projectId) return Promise.resolve();
+    return fetch("/api/projects/" + encodeURIComponent(projectId) + "/claim", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+  }
+
+  function onSaveClick() {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then(function (r) {
+        if (r.status === 401) {
+          showAuthModal();
+          return;
+        }
+        if (r.ok && projectId) {
+          return claimProjectId().then(function () { alert("저장되었습니다."); });
+        }
+      });
+  }
+
+  var btnSave = document.getElementById("btnSave");
+  if (btnSave) btnSave.addEventListener("click", onSaveClick);
+  if (authModalLater) authModalLater.addEventListener("click", hideAuthModal);
+  if (authModalBackdrop) authModalBackdrop.addEventListener("click", hideAuthModal);
+
+  if (authModalLoginForm) {
+    authModalLoginForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalEmail.value, password: authModalPassword.value })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+      }).catch(function () { showFormError("로그인 요청에 실패했습니다."); });
+    });
+  }
+  if (authModalSignupBtn) {
+    authModalSignupBtn.addEventListener("click", showSignupPanel);
+  }
+  var authModalSignupPanel = document.getElementById("authModalSignupPanel");
+  var authModalSignupForm = document.getElementById("authModalSignupForm");
+  var authModalSignupEmail = document.getElementById("authModalSignupEmail");
+  var authModalSignupPassword = document.getElementById("authModalSignupPassword");
+  var authModalSignupPasswordConfirm = document.getElementById("authModalSignupPasswordConfirm");
+  var authModalSignupBack = document.getElementById("authModalSignupBack");
+  var authModalSignupClose = document.getElementById("authModalSignupClose");
+  var authModalSignupToLoginLink = document.getElementById("authModalSignupToLoginLink");
+  var authModalSignupLater = document.getElementById("authModalSignupLater");
+  if (authModalSignupBack) authModalSignupBack.addEventListener("click", showLoginPanel);
+  if (authModalSignupClose) authModalSignupClose.addEventListener("click", hideAuthModal);
+  if (authModalSignupToLoginLink) authModalSignupToLoginLink.addEventListener("click", function (e) { e.preventDefault(); showLoginPanel(); });
+  if (authModalSignupLater) authModalSignupLater.addEventListener("click", hideAuthModal);
+  if (authModalSignupForm) {
+    authModalSignupForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      var pwd = authModalSignupPassword && authModalSignupPassword.value;
+      var pwdConfirm = authModalSignupPasswordConfirm && authModalSignupPasswordConfirm.value;
+      if (pwd !== pwdConfirm) {
+        showFormError("비밀번호가 일치하지 않습니다.");
+        return;
+      }
+      fetch("/api/auth/signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalSignupEmail.value, password: pwd })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+      }).catch(function () { showFormError("회원가입 요청에 실패했습니다."); });
+    });
+  }
+
+  (function tryClaimOnLoad() {
+    if (!projectId) return;
+    fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
+      if (r.ok) claimProjectId();
+    });
+  })();
+
+  var btnShare = document.getElementById("btnShare");
+  if (btnShare) {
+    btnShare.addEventListener("click", function () {
+      var root = document.getElementById("viewerRoot");
+      var url = root && root.getAttribute("data-project-id")
+        ? (window.location.origin + "/viewer/" + (root.getAttribute("data-project-type") || "video") + "/" + root.getAttribute("data-project-id"))
+        : window.location.href;
+      if (navigator.share) {
+        navigator.share({ title: document.title || "Flairy", url: url }).then(function () { alert("공유되었습니다."); }).catch(function () {
+          navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { alert(url); });
+        });
+      } else {
+        navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { prompt("아래 주소를 복사하세요.", url); });
+      }
+    });
+  }
+})();
+</script>
+{% endblock scripts %}

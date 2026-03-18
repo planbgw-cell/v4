@@ -1,0 +1,14 @@
+{# 뷰어 하단 버튼 공통 모듈. mode=mypage면 공유/다운로드, 아니면 저장/내 보관함. #}
+<div class="footer-actions mt-4">
+  {% if mode == 'mypage' %}
+  <button type="button" id="btnShare" class="btn-primary-viewer">공유하기</button>
+  {% if project_type == 'video' and video_url is defined and video_url %}
+  <a href="{{ video_url }}" download class="btn-secondary-viewer" id="btnDownload">고화질 다운로드</a>
+  {% else %}
+  <span class="btn-secondary-viewer opacity-60 cursor-not-allowed" title="준비 중">고화질 다운로드 (준비중)</span>
+  {% endif %}
+  {% else %}
+  <button type="button" id="btnSave" class="btn-primary-viewer">저장하기</button>
+  <a href="/mypage" class="btn-secondary-viewer">내 보관함 관리</a>
+  {% endif %}
+</div>

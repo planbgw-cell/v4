@@ -7,7 +7,34 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import MediaFile, Project, ProjectMode
+from app.models import MediaFile, Project, ProjectMode, User
+
+
+# ---------- Users ----------
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """이메일로 유저 조회."""
+    return db.query(User).filter(User.email == email).first()
+
+
+def get_user_by_id(db: Session, user_id: UUID) -> Optional[User]:
+    """ID로 유저 조회."""
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def create_user(
+    db: Session,
+    email: str,
+    hashed_password: str | None,
+    provider: str = "local",
+) -> User:
+    """유저 생성 (회원가입)."""
+    user = User(email=email, hashed_password=hashed_password, provider=provider)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 # ---------- Projects ----------
@@ -31,6 +58,40 @@ def create_project(
 def get_project(db: Session, project_id: UUID) -> Optional[Project]:
     """프로젝트 단건 조회 (관련 media_files 포함)."""
     return db.query(Project).options(joinedload(Project.media_files)).filter(Project.id == project_id).first()
+
+
+def claim_project(db: Session, project_id: UUID, user_id: UUID) -> Optional[Project]:
+    """게스트 프로젝트를 로그인 사용자 소유로 변경. user_id가 이미 있으면 변경하지 않고 그대로 반환."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return None
+    if project.user_id is not None:
+        return project
+    project.user_id = user_id
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def get_projects_by_user_id(db: Session, user_id: UUID) -> list[Project]:
+    """로그인 유저의 프로젝트 목록. created_at 내림차순."""
+    return (
+        db.query(Project)
+        .options(joinedload(Project.media_files))
+        .filter(Project.user_id == user_id)
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+
+
+def delete_project(db: Session, project_id: UUID) -> bool:
+    """프로젝트 삭제(DB만). 소유 확인은 호출부에서. 성공 시 True, 없으면 False."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return False
+    db.delete(project)
+    db.commit()
+    return True
 
 
 def update_project_status(db: Session, project_id: UUID, status: str) -> Optional[Project]:

@@ -14,8 +14,11 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from app.crud import get_project, update_project_output_path, update_project_status
 from app.database import SessionLocal
 from app.storage import get_project_final_dir
+from app.services import narrative_service
 from app.services.video_service import run_ai_analysis
-from engine.album_engine import build_layout, save_album_layout
+from app.utils.color_utils import get_accent_color_hex, get_dominant_color_hex
+from engine.album_engine import build_layout, build_layout_ai, save_album_layout
+from engine.bgm_engine import get_dominant_emotion, select_bgm_path
 from engine.video_engine import FlairyVideoEngine
 
 logger = logging.getLogger(__name__)
@@ -125,22 +128,73 @@ def _run_generate_task(project_id_str: str) -> None:
         raise
 
 
+# 앨범 AI 모드: score_100 이하면 제외 (60점 미만)
+ALBUM_SCORE_THRESHOLD = 60
+
+
 def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
-    """앨범 설계도 생성: order_index 정렬 미디어 → build_layout → album_layout.json 저장."""
+    """앨범 설계도 생성: order_index 정렬 미디어 → build_layout 또는 build_layout_ai → album_layout.json 저장."""
     try:
         media_files = getattr(project, "media_files", None) or []
         sorted_media = sorted(media_files, key=lambda m: getattr(m, "order_index", 0))
-        media_list = [
-            {
-                "file_path": getattr(m, "file_path", "") or "",
-                "file_type": getattr(m, "file_type", "image") or "image",
-                "width": getattr(m, "width", None),
-                "height": getattr(m, "height", None),
-            }
-            for m in sorted_media
-        ]
         title = getattr(project, "title", None) or "디지털 앨범"
-        layout = build_layout(media_list, title, project_id=str(project_id))
+
+        if _is_ai_mode(project):
+            image_only = [m for m in sorted_media if getattr(m, "file_type", None) == "image"]
+            selected = [m for m in image_only if getattr(m, "is_selected", True)]
+            curated = []
+            for m in selected:
+                ai = getattr(m, "ai_analysis", None) or {}
+                score_100 = ai.get("score_100")
+                if score_100 is not None and int(score_100) < ALBUM_SCORE_THRESHOLD:
+                    continue
+                curated.append({
+                    "file_path": getattr(m, "file_path", "") or "",
+                    "file_type": getattr(m, "file_type", "image") or "image",
+                    "width": getattr(m, "width", None),
+                    "height": getattr(m, "height", None),
+                    "ai_analysis": ai,
+                })
+            english_title = None
+            if not curated:
+                logger.warning("앨범 AI: 선별된 미디어 0건 (is_selected + score >= %d)", ALBUM_SCORE_THRESHOLD)
+            else:
+                descriptions = [item["ai_analysis"].get("description") or "" for item in curated]
+                english_title = narrative_service.generate_album_title_english(descriptions)
+                lyrical_list = narrative_service.generate_lyrical_captions(descriptions)
+                for i, item in enumerate(curated):
+                    item["lyrical_caption"] = lyrical_list[i] if i < len(lyrical_list) else ""
+                for item in curated:
+                    ai = item.get("ai_analysis") or {}
+                    dominant_hex = ai.get("dominant_color") or (
+                        (ai.get("colors") or [None])[0] if ai.get("colors") else None
+                    )
+                    if not dominant_hex and item.get("file_path"):
+                        abs_path = ROOT / item["file_path"]
+                        dominant_hex = get_dominant_color_hex(abs_path)
+                    item["dominant_color_hex"] = dominant_hex
+                    if item.get("file_path"):
+                        item["accent_color_hex"] = get_accent_color_hex(ROOT / item["file_path"])
+            logger.info("[Album] Calling build_layout_ai: curated_count=%s project_id=%s", len(curated), project_id)
+            layout = build_layout_ai(curated, title, project_id=str(project_id), english_title=english_title)
+        else:
+            media_list = [
+                {
+                    "file_path": getattr(m, "file_path", "") or "",
+                    "file_type": getattr(m, "file_type", "image") or "image",
+                    "width": getattr(m, "width", None),
+                    "height": getattr(m, "height", None),
+                }
+                for m in sorted_media
+            ]
+            layout = build_layout(media_list, title, project_id=str(project_id))
+        emotion = get_dominant_emotion(getattr(project, "media_files", None) or []) if _is_ai_mode(project) else ""
+        bgm_path = select_bgm_path(emotion, ROOT)
+        layout["dominant_emotion"] = emotion or ""
+        try:
+            layout["bgm_path"] = str(bgm_path.relative_to(ROOT))
+        except ValueError:
+            layout["bgm_path"] = "static/audio/" + bgm_path.name
         final_dir = get_project_final_dir(project_id, base_dir=ROOT)
         save_album_layout(layout, final_dir)
         output_path_str = str(Path("storage") / "final" / str(project_id) / "album_layout.json")

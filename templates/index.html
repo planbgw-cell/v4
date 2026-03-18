@@ -3,17 +3,8 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-6">
-  <!-- Header -->
-  <header class="flex justify-between items-center mb-8">
-    <div class="flex items-center gap-2">
-      <span class="text-2xl font-bold text-indigo-600">Flairy</span>
-      <span class="text-gray-500">디지털 앨범 서비스</span>
-    </div>
-    <div class="flex items-center gap-4">
-      <a href="#" class="text-gray-600 hover:text-indigo-600">내 앨범 관리</a>
-      <a href="#" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">로그인</a>
-    </div>
-  </header>
+  {% include "partials/header.html" %}
+  <div class="mb-8"></div>
 
   <!-- Album title + File select -->
   <section class="mb-6">
@@ -104,9 +95,131 @@
     디버그 모드
   </label>
 </div>
+{% set current_url = request.url.path %}
+{% include "partials/auth_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
+<script>
+(function () {
+  var headerAuthBtn = document.getElementById("headerAuthBtn");
+  var authModal = document.getElementById("authModal");
+  var authModalBackdrop = document.getElementById("authModalBackdrop");
+  var authModalLater = document.getElementById("authModalLater");
+  var authModalLoginForm = document.getElementById("authModalLoginForm");
+  var authModalSignupBtn = document.getElementById("authModalSignupBtn");
+  var authModalFormError = document.getElementById("authModalFormError");
+  var authModalEmail = document.getElementById("authModalEmail");
+  var authModalPassword = document.getElementById("authModalPassword");
+  var authModalSignupPanel = document.getElementById("authModalSignupPanel");
+  var authModalSignupForm = document.getElementById("authModalSignupForm");
+  var authModalSignupEmail = document.getElementById("authModalSignupEmail");
+  var authModalSignupPassword = document.getElementById("authModalSignupPassword");
+  var authModalSignupPasswordConfirm = document.getElementById("authModalSignupPasswordConfirm");
+  var authModalSignupBack = document.getElementById("authModalSignupBack");
+  var authModalSignupClose = document.getElementById("authModalSignupClose");
+  var authModalSignupToLoginLink = document.getElementById("authModalSignupToLoginLink");
+  var authModalSignupLater = document.getElementById("authModalSignupLater");
+
+  function showFormError(msg) {
+    if (authModalFormError) {
+      authModalFormError.textContent = msg || "";
+      authModalFormError.classList.toggle("hidden", !msg);
+    }
+  }
+  function detailToMessage(d) {
+    if (!d || d.detail === undefined) return "요청에 실패했습니다.";
+    if (typeof d.detail === "string") return d.detail;
+    if (Array.isArray(d.detail) && d.detail[0]) return d.detail[0].msg || (d.detail[0].loc && d.detail[0].loc.join(" ")) || "입력값을 확인해 주세요.";
+    return "요청에 실패했습니다.";
+  }
+  function showLoginPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.remove("hidden");
+    if (sp) sp.classList.add("hidden");
+    showFormError("");
+  }
+  function showSignupPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.add("hidden");
+    if (sp) sp.classList.remove("hidden");
+    showFormError("");
+  }
+  function hideAuthModal() {
+    if (authModal) authModal.classList.add("hidden");
+  }
+  function showAuthModal() {
+    if (authModal) authModal.classList.remove("hidden");
+    showLoginPanel();
+  }
+
+  function updateHeaderAuthState() {
+    if (!headerAuthBtn) return;
+    fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
+      if (r.ok) {
+        window.location.reload();
+      } else {
+        headerAuthBtn.textContent = "로그인";
+        headerAuthBtn.onclick = onSignInClick;
+      }
+    });
+  }
+  function onSignInClick() {
+    showAuthModal();
+  }
+
+  updateHeaderAuthState();
+
+  if (authModalBackdrop) authModalBackdrop.addEventListener("click", hideAuthModal);
+  if (authModalLater) authModalLater.addEventListener("click", hideAuthModal);
+  if (authModalSignupBack) authModalSignupBack.addEventListener("click", showLoginPanel);
+  if (authModalSignupClose) authModalSignupClose.addEventListener("click", hideAuthModal);
+  if (authModalSignupToLoginLink) authModalSignupToLoginLink.addEventListener("click", function (e) { e.preventDefault(); showLoginPanel(); });
+  if (authModalSignupLater) authModalSignupLater.addEventListener("click", hideAuthModal);
+  if (authModalSignupBtn) authModalSignupBtn.addEventListener("click", showSignupPanel);
+
+  if (authModalLoginForm) {
+    authModalLoginForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalEmail.value, password: authModalPassword.value })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        hideAuthModal();
+        updateHeaderAuthState();
+      }).catch(function () { showFormError("로그인 요청에 실패했습니다."); });
+    });
+  }
+  if (authModalSignupForm) {
+    authModalSignupForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      var pwd = authModalSignupPassword && authModalSignupPassword.value;
+      var pwdConfirm = authModalSignupPasswordConfirm && authModalSignupPasswordConfirm.value;
+      if (pwd !== pwdConfirm) {
+        showFormError("비밀번호가 일치하지 않습니다.");
+        return;
+      }
+      fetch("/api/auth/signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalSignupEmail.value, password: pwd })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        hideAuthModal();
+        updateHeaderAuthState();
+      }).catch(function () { showFormError("회원가입 요청에 실패했습니다."); });
+    });
+  }
+})();
+</script>
 <script>
 (function () {
   const MAX_TOTAL = 30;

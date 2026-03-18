@@ -1,983 +1,241 @@
 {% extends "layouts/base.html" %}
 {% block title %}Digital Album - {{ project_title }} - Flairy{% endblock %}
 {% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}
-{% block head %}
-<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&family=Noto+Serif+KR:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-<style>
-  /* v3 스타일: 문서 흐름 레이아웃, 높이는 콘텐츠에 맡김 */
-  .album-viewer-layout {
-    width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    box-sizing: border-box;
-  }
-  /* [상단 섹션] 앨범 중앙 정렬·여백, 고정 높이 없음 */
-  .album-top-section {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    padding-top: 50px;
-    padding-bottom: 50px;
-    overflow: visible;
-  }
-  .album-top-section .flipbook-inner {
-    position: relative;
-    left: 0;
-    margin-left: auto;
-    margin-right: auto;
-    max-width: min(900px, 95vw);
-  }
-  .album-top-section #bookContainer,
-  .album-top-section .book-container {
-    position: relative;
-    left: 0;
-  }
-  /* [하단 섹션] 문서 흐름상 앨범 아래, 고정 높이 없음 */
-  .album-bottom-section {
-    width: 100%;
-    max-width: 100vw;
-    box-sizing: border-box;
-  }
-  /* 썸네일 바: 스크롤은 #thumbBar에서만, 앨범과 동일 폭으로 중앙 정렬 */
-  .thumbnail-bar-wrapper {
-    width: 100%;
-    max-width: min(900px, 95vw);
-    margin-left: auto;
-    margin-right: auto;
-    overflow: visible;
-  }
-  .album-viewer-page {
-    max-width: 100vw;
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 2rem;
-  }
-  .flipbook-wrap {
-    max-width: 100vw;
-    width: 100%;
-    overflow: visible;
-  }
-  .flipbook-inner {
-    width: 100%;
-    max-width: min(900px, 95vw);
-    margin: 0 auto;
-  }
-  .page-display {
-    position: relative;
-    z-index: 10;
-    width: 100%;
-    min-height: 320px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-    border-radius: 4px;
-    overflow: visible;
-    background: #ffffff;
-  }
-  .page-content {
-    padding: 12% 14%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 280px;
-    box-sizing: border-box;
-  }
-  .spread-row .page-content {
-    flex-direction: column;
-    gap: 0;
-  }
-  /* 공통: 모바일·3D 공용 미디어 컨테이너 (9:16, overflow, 캡션 기준) */
-  .album-media-container {
-    aspect-ratio: 9 / 16;
-    max-width: 100%;
-    overflow: hidden;
-    position: relative;
-  }
-  .album-media-container .slot-caption {
-    text-align: center;
-    font-family: "Nanum Pen Script", "Noto Sans KR", sans-serif;
-  }
-  /* 9:16 전용 프레임: 황금비율 가상 액자 + 종이/사진 경계 (Task 2·3) */
-  .media-frame {
-    aspect-ratio: 9 / 16;
-    width: 100%;
-    max-width: 100%;
-    position: relative;
-    overflow: hidden;
-    border-radius: 4px;
-    border: 1px solid rgba(0,0,0,0.05);
-    box-shadow: inset 0 0 12px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    background: #1a1a1a;
-    flex-shrink: 0;
-  }
-  .slot-blur {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    filter: blur(25px) brightness(0.75);
-    transform: scale(1.15);
-  }
-  .media-frame:not(.has-blur) .slot-blur {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  /* 블러: 미디어 영역(.media-frame) 범위 내에서만 표시, 여백으로 넘치지 않음 */
-  .media-frame.has-blur {
-    overflow: hidden;
-    contain: paint;
-  }
-  .media-frame.has-blur .slot-blur {
-    visibility: visible;
-  }
-  .slot-img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center;
-  }
-  .slot-img.contain {
-    object-fit: contain;
-  }
-  .slot-video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center;
-    background: #000;
-  }
-  .slot-caption {
-    position: relative;
-    margin-top: 15px;
-    padding: 10px 12px 12px;
-    text-align: center;
-    background: linear-gradient(transparent, rgba(0,0,0,0.5));
-    color: rgba(255,255,255,0.95);
-    font-size: 0.9rem;
-    font-family: "Playfair Display", "Noto Serif KR", serif;
-    letter-spacing: 0.05em;
-  }
-  .spread-row {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    gap: 0;
-    min-height: 280px;
-  }
-  .spread-half {
-    flex: 0 0 50%;
-    width: 50%;
-    min-width: 0;
-    overflow: hidden;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  .spread-half .page-content {
-    padding-top: 10%;
-    padding-left: 12%;
-    padding-right: 12%;
-    padding-bottom: 18%;
-    box-sizing: border-box;
-    flex: 1;
-    width: 100%;
-    min-width: 0;
-    overflow: hidden;
-  }
-  .spread-half .media-frame {
-    max-width: 100%;
-    min-width: 0;
-    flex-shrink: 1;
-  }
-  .spread-half-blank .page-content {
-    background: transparent;
-  }
-  .spread-half-blank .media-frame-placeholder {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.06);
-  }
-  /* 앞표지: 우측 스프레드에 미디어 중앙 배치 */
-  .spread-half-cover-right {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .spread-half-cover-right .page-content-cover-right {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding-top: 10%;
-    padding-left: 12%;
-    padding-right: 12%;
-    padding-bottom: 18%;
-    box-sizing: border-box;
-  }
-  .spread-half-cover-right .media-frame {
-    max-width: 100%;
-  }
-  .media-frame-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    background: #e5e7eb;
-  }
-  .slot-caption-outer {
-    margin-top: 8px;
-    text-align: center;
-    color: #374151;
-    font-size: 0.9rem;
-    font-family: "Playfair Display", "Noto Serif KR", serif;
-    letter-spacing: 0.05em;
-  }
-  /* 임시: 스프레드/책등 테두리 - 제거 가능 */
-  .spread-row .spread-half:first-of-type {
-    border-right: 1px dashed rgba(0,0,0,0.35);
-  }
-  .click-zone {
-    position: absolute;
-    top: 0;
-    bottom: 80px;
-    z-index: 5;
-    cursor: pointer;
-  }
-  .click-zone.prev {
-    left: 0;
-    width: 40%;
-  }
-  .click-zone.next {
-    right: 0;
-    width: 40%;
-  }
-
-  /* ----- 3D FlipBook: 책 컨테이너 및 리프 ----- */
-  .book-container {
-    perspective: 2000px;
-    position: relative;
-    z-index: 10;
-    min-height: 380px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: visible;
-  }
-  .book-body {
-    position: relative;
-    width: min(900px, 95vw);
-    height: 360px;
-    transform-style: preserve-3d;
-    overflow: visible;
-  }
-  .book-body::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    width: 0;
-    border-left: 1px dashed rgba(0,0,0,0.35);
-    pointer-events: none;
-    /* 임시: 책등(중앙) 세로선 - 제거 가능 */
-  }
-  /* Spine-Center: 리프는 책의 정확히 50% 너비, 중앙(left:50%)에서 시작, 회전축 left center */
-  .leaf {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 50%;
-    height: 100%;
-    transform-style: preserve-3d;
-    transform-origin: left center;
-    transition: transform 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
-    pointer-events: none;
-  }
-  .leaf .leaf-inner {
-    position: absolute;
-    inset: 0;
-    transform-style: preserve-3d;
-    pointer-events: auto;
-  }
-  .leaf.flipped {
-    transform: rotateY(-180deg);
-  }
-  .leaf-face {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    backface-visibility: hidden;
-    overflow: hidden;
-    background: #F9F9F9;
-    box-shadow: inset 5px 0 10px rgba(0,0,0,0.05), 0 2px 12px rgba(0,0,0,0.08);
-  }
-  .leaf-face.front {
-    border-radius: 0 4px 4px 0;
-  }
-  .leaf-face.back {
-    transform: rotateY(180deg);
-    border-radius: 4px 0 0 4px;
-  }
-  #bookBody .leaf-face-content {
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 10% 12% 18%;
-    box-sizing: border-box;
-  }
-  #bookBody .leaf-face .media-frame,
-  #bookBody .leaf-face .media-frame-placeholder {
-    aspect-ratio: 9 / 16;
-    width: 100%;
-    max-width: 100%;
-    max-height: 80%;
-    min-width: 0;
-    flex-shrink: 1;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  /* 스파인 그림자: A4 높이에 맞춰 리프 끝까지 연장 (top/bottom 0) */
-  .leaf-spine-shadow {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 12px;
-    background: linear-gradient(90deg, rgba(0,0,0,0.25), transparent);
-    pointer-events: none;
-  }
-  .leaf.flipped .leaf-spine-shadow {
-    left: auto;
-    right: 0;
-    background: linear-gradient(270deg, rgba(0,0,0,0.25), transparent);
-  }
-  .book-floor {
-    position: absolute;
-    left: 50%;
-    bottom: -20px;
-    width: 120%;
-    height: 24px;
-    transform: translateX(-50%) rotateX(70deg);
-    background: linear-gradient(180deg, rgba(0,0,0,0.08), transparent);
-    border-radius: 50%;
-    pointer-events: none;
-  }
-
-  .thumb-bar {
-    display: flex;
-    gap: 10px;
-    padding: 12px 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scroll-behavior: smooth;
-  }
-  .thumb-bar::-webkit-scrollbar {
-    height: 6px;
-  }
-  .thumb-bar::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-  }
-  .thumb-bar::-webkit-scrollbar-thumb {
-    background: #c5c5c5;
-    border-radius: 3px;
-  }
-  .thumb-bar.hide-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .thumb-bar.hide-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .thumb-item {
-    flex-shrink: 0;
-    width: 72px;
-    cursor: pointer;
-    border: 4px solid transparent;
-    border-radius: 6px;
-    overflow: hidden;
-    background: #e5e7eb;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .thumb-item.active {
-    border-color: #4f46e5;
-    border-width: 4px;
-    box-shadow: 0 0 0 2px rgba(79,70,229,0.35);
-  }
-  .thumb-item .thumb-inner {
-    aspect-ratio: 9/16;
-    width: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  /* 스프레드 전체 비율: 좌·우 두 페이지(각 9:16)가 나란히 = 18:16 = 9:8 */
-  .thumb-item .thumb-spread {
-    display: flex;
-    width: 100%;
-    aspect-ratio: 18 / 16;
-  }
-  /* 스프레드 한 페이지와 동일 비율(9:16)로 썸네일 절반 고정 */
-  .thumb-item .thumb-spread-half {
-    flex: 1;
-    min-width: 0;
-    aspect-ratio: 9 / 16;
-    background: #e5e7eb;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
-  .thumb-item .thumb-spread-half.filled {
-    padding: 0;
-    background: #1a1a1a;
-  }
-  .thumb-item .thumb-spread-half.filled img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  .thumb-item .thumb-spread-half.thumb-video-wrap {
-    background: #374151;
-  }
-  .thumb-item .thumb-spread-half.thumb-video-wrap .thumb-video-preview {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  .thumb-item .thumb-spread-half.blank {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.08);
-  }
-  .thumb-item .thumb-spread-half.filled {
-    position: relative;
-  }
-  .thumb-play-icon {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.5);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    pointer-events: none;
-  }
-  .thumb-label {
-    font-size: 10px;
-    text-align: center;
-    padding: 2px 0;
-    color: #6b7280;
-    white-space: nowrap;
-  }
-  .thumb-item.active .thumb-label {
-    color: #4f46e5;
-    font-weight: 600;
-  }
-  /* 페이지 인디케이터: 스프레드·썸네일과 같은 폭/중앙 정렬 */
-  .album-bottom-section .page-indicator {
-    max-width: min(900px, 95vw);
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .page-indicator {
-    text-align: center;
-    padding: 8px 0;
-    font-size: 0.875rem;
-    color: #4b5563;
-  }
-  @media (max-width: 768px) {
-    .spread-row {
-      flex-direction: column;
-    }
-    .spread-half {
-      width: 100%;
-    }
-    .spread-half .page-content {
-      padding-top: 10%;
-      padding-left: 12%;
-      padding-right: 12%;
-      padding-bottom: 18%;
-    }
-    .page-display {
-      max-width: 100%;
-    }
-  }
-
-  /* 3D Flip: 데스크톱에서만 책 모드, 모바일에서 단일 페이지 (특이도로 전환, !important 미사용) */
-  @media (max-width: 767px) {
-    .flipbook-inner .book-container.book-mode {
-      display: none;
-    }
-    .flipbook-inner .page-display.single-mode {
-      display: block;
-    }
-  }
-  @media (min-width: 768px) {
-    .flipbook-inner .book-container.book-mode {
-      display: flex;
-    }
-    .flipbook-inner .page-display.single-mode {
-      display: none;
-    }
-  }
-</style>
-{% endblock %}
+{% block head %}{% endblock %}
 
 {% block content %}
-<div class="album-viewer-page">
-  <h1 class="text-lg font-semibold text-gray-800 text-center py-2 truncate">Digital Album — {{ project_title }}</h1>
-
-  <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
-    <div id="loadingState" class="text-center py-16 text-gray-500">
-      앨범을 불러오는 중...
-    </div>
-    <div id="errorState" class="text-center py-16 text-red-600 hidden">
-      앨범을 불러올 수 없습니다.
-    </div>
-    <div id="flipbookState" class="hidden album-viewer-layout">
-      <div class="album-top-section">
-        <div class="flipbook-inner">
-          <div id="clickPrev" class="click-zone prev" title="이전"></div>
-          <div id="clickNext" class="click-zone next" title="다음"></div>
-          <div id="bookContainer" class="book-container book-mode">
-            <div class="book-floor" aria-hidden="true"></div>
-            <div id="bookBody" class="book-body"></div>
+{% include "partials/_viewer_styles.html" %}
+{% include "partials/_viewer_album_styles.html" %}
+{% if mode != 'mypage' %}{% include "partials/viewer_header.html" %}{% endif %}
+<main id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}" class="album-viewer-page pb-10 min-h-screen bg-[#F8FAFC]">
+  <div class="viewer-stage">
+    <h1 class="text-lg font-semibold text-gray-800 text-center truncate album-viewer-title">Digital Album — {{ project_title }}</h1>
+    <div class="content-album-wrapper">
+      <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
+        <div id="loadingState" class="text-center py-16 text-gray-500">
+          앨범을 불러오는 중...
+        </div>
+        <div id="errorState" class="text-center py-16 text-red-600 hidden">
+          앨범을 불러올 수 없습니다.
+        </div>
+        <div id="flipbookState" class="hidden album-viewer-layout">
+          <div class="album-top-section">
+            <div class="flipbook-inner">
+              <div id="clickPrev" class="click-zone prev" title="이전"></div>
+              <div id="clickNext" class="click-zone next" title="다음"></div>
+              <div id="bookContainer" class="book-container book-mode">
+                <div class="book-floor" aria-hidden="true"></div>
+                <div id="bookBody" class="book-body"></div>
+              </div>
+              <div id="pageDisplay" class="page-display single-mode"></div>
+            </div>
           </div>
-          <div id="pageDisplay" class="page-display single-mode"></div>
-        </div>
-      </div>
-      <div class="album-bottom-section">
-        <p id="pageIndicator" class="page-indicator"></p>
-        <div class="thumbnail-bar-wrapper">
-          <div id="thumbBar" class="thumb-bar"></div>
+          <div class="album-bottom-section">
+            <div class="thumbnail-bar-wrapper">
+              <div id="thumbBar" class="thumb-bar"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
-
-  <div class="footer-actions mt-8">
-    <button type="button" id="btnSave" class="btn-primary-viewer">
-      앨범 저장
-    </button>
-    <a href="/" class="btn-secondary-viewer">
-      내 앨범 관리
-    </a>
-  </div>
-</div>
-{% endblock %}
+</main>
+<footer class="floating-controls">
+  {% include "partials/_viewer_actions.html" %}
+</footer>
+{% include "partials/auth_modal.html" %}
+{% endblock content %}
 
 {% block scripts %}
+<script src="/static/js/album-viewer-init.js"></script>
 <script>
+console.log("[Album] viewer_album inline script ran (direct URL page)");
 (function () {
-  const projectId = "{{ project_id }}";
-  if (!projectId) {
-    document.getElementById("loadingState").classList.add("hidden");
-    document.getElementById("errorState").classList.remove("hidden");
-    document.getElementById("errorState").textContent = "project_id가 없습니다.";
-    return;
-  }
-
-  function toRawUrl(path) {
-    if (!path) return "";
-    const match = path.match(/^storage\/raw\/[^/]+\/(.+)$/);
-    if (match) return "/raw/" + projectId + "/" + match[1];
-    return path.startsWith("/") ? path : "/raw/" + projectId + "/" + path;
-  }
-
-  function isVideoPath(path) {
-    if (!path) return false;
-    return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(path);
-  }
-
-  function slotHtml(mediaPath, styles, caption, fileType) {
-    const url = toRawUrl(mediaPath);
-    const isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
-    const needsBlur = !isVideo && styles && styles.needs_blur;
-    const hasBlurClass = needsBlur ? " has-blur" : "";
-    const blurPart = isVideo ? "" : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" />';
-    const mediaPart = isVideo
-      ? '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="auto"></video>'
-      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" />';
-    const captionPart = caption ? '<div class="slot-caption">' + escapeHtml(caption) + "</div>" : "";
-    return (
-      '<div class="media-frame album-media-container' + hasBlurClass + '">' +
-      blurPart +
-      mediaPart +
-      captionPart +
-      "</div>"
-    );
-  }
-
-  function applyLandscapeBlur(container) {
-    if (!container) return;
-    var frames = container.querySelectorAll(".media-frame:not(.has-blur) img.slot-img");
-    frames.forEach(function (img) {
-      function check() {
-        if (img.naturalWidth && img.naturalHeight && img.naturalWidth > img.naturalHeight) {
-          var frame = img.closest(".media-frame");
-          if (frame) frame.classList.add("has-blur");
-        }
-      }
-      if (img.complete) check();
-      else img.addEventListener("load", check);
-    });
-  }
-
-  var albumVideoObserver = null;
-  function setupVideoInPage(container) {
-    if (!container) return;
-    container.querySelectorAll(".media-frame video.slot-video").forEach(function (video) {
-      video.addEventListener("click", function (e) { e.stopPropagation(); });
-      video.closest(".media-frame").addEventListener("click", function (e) { e.stopPropagation(); });
-      if (!albumVideoObserver) {
-        albumVideoObserver = new IntersectionObserver(
-          function (entries) {
-            entries.forEach(function (entry) {
-              var v = entry.target;
-              if (entry.isIntersecting) {
-                v.play().catch(function () {});
-              } else {
-                v.pause();
-              }
-            });
-          },
-          { threshold: 0.5, root: null }
-        );
-      }
-      albumVideoObserver.observe(video);
-    });
-  }
-  function disconnectVideoObserver() {
-    if (albumVideoObserver) {
-      albumVideoObserver.disconnect();
-    }
-  }
-
-  function escapeHtml(s) {
-    const div = document.createElement("div");
-    div.textContent = s;
-    return div.innerHTML;
-  }
-
-  function getPageLabel(page, index, total) {
-    if (page.type === "front") return "앞표지";
-    if (page.type === "back") return "뒷표지";
-    if (page.type === "spread") {
-      var leftPage = 2 * (index - 1) + 1;
-      var rightPage = 2 * (index - 1) + 2;
-      return leftPage + " / " + rightPage;
-    }
-    return (index + 1) + " / " + total;
-  }
-
-  function renderPageContent(page, index, total) {
-    const label = getPageLabel(page, index, total);
-    if (page.type === "front") {
-      var leftHtml =
-        '<div class="spread-half spread-half-blank">' +
-        '<div class="page-content">' +
-        '<div class="media-frame media-frame-placeholder"></div>' +
-        "</div></div>";
-      var rightHtml =
-        '<div class="spread-half spread-half-cover-right">' +
-        '<div class="page-content page-content-cover-right">' +
-        (page.right
-          ? slotHtml(page.right, (page.styles && page.styles.right) || {}, page.title || "", (page.file_types && page.file_types.right) || "")
-          : '<div class="media-frame media-frame-placeholder"></div>') +
-        "</div></div>";
-      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
-    }
-    if (page.type === "back") {
-      var leftHtml =
-        '<div class="spread-half">' +
-        '<div class="page-content">' +
-        slotHtml(page.left, (page.styles && page.styles.left) || {}, page.caption || "", (page.file_types && page.file_types.left) || "") +
-        "</div></div>";
-      var rightHtml =
-        '<div class="spread-half spread-half-blank">' +
-        '<div class="page-content">' +
-        '<div class="media-frame media-frame-placeholder"></div>' +
-        "</div></div>";
-      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
-    }
-    if (page.type === "spread") {
-      const leftHtml =
-        '<div class="spread-half">' +
-        '<div class="page-content">' +
-        (page.left
-          ? slotHtml(page.left, (page.styles && page.styles.left) || {}, (page.captions && page.captions.left) || "", (page.file_types && page.file_types.left) || "")
-          : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
-        "</div></div>";
-      const rightHtml =
-        '<div class="spread-half">' +
-        '<div class="page-content">' +
-        (page.right
-          ? slotHtml(page.right, (page.styles && page.styles.right) || {}, (page.captions && page.captions.right) || "", (page.file_types && page.file_types.right) || "")
-          : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
-        "</div></div>";
-      return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
-    }
-    return "";
-  }
-
-  let layout = null;
-  let currentIndex = 0;
-
-  function isDesktop() {
-    return typeof window !== "undefined" && window.innerWidth >= 768;
-  }
-
-  function slotFromPageHalf(page, side) {
-    var path, styles, caption, ft;
-    if (side === "right") {
-      path = page.right;
-      styles = (page.styles && page.styles.right) || {};
-      caption = (page.captions && page.captions.right) || (page.title || "") || "";
-      ft = (page.file_types && page.file_types.right) || "";
+  function runAlbumInit() {
+    var flipbookRoot = document.getElementById("flipbookRoot");
+    var hasInit = typeof window.initAlbumViewer === "function";
+    console.log("[Album] flipbookRoot exists:", !!flipbookRoot, "initAlbumViewer defined:", hasInit);
+    if (flipbookRoot && hasInit) {
+      window.initAlbumViewer();
     } else {
-      path = page.left;
-      styles = (page.styles && page.styles.left) || {};
-      caption = (page.captions && page.captions.left) || (page.caption || "") || "";
-      ft = (page.file_types && page.file_types.left) || "";
-    }
-    return path
-      ? slotHtml(path, styles, caption, ft)
-      : '<div class="media-frame media-frame-placeholder"></div>';
-  }
-
-  function buildLeaves() {
-    if (!layout || !layout.pages || layout.pages.length < 2) return;
-    var pages = layout.pages;
-    var totalLeaves = pages.length - 1;
-    var bookBody = document.getElementById("bookBody");
-    if (!bookBody) return;
-    bookBody.innerHTML = "";
-    for (var i = 0; i < totalLeaves; i++) {
-      var frontHtml = slotFromPageHalf(pages[i], "right");
-      var backHtml = slotFromPageHalf(pages[i + 1], "left");
-      var leaf = document.createElement("div");
-      leaf.className = "leaf";
-      leaf.dataset.leafIndex = String(i);
-      leaf.innerHTML =
-        '<div class="leaf-inner">' +
-        '<div class="leaf-face front">' +
-        '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
-        '<div class="leaf-face-content">' + frontHtml + "</div>" +
-        "</div>" +
-        '<div class="leaf-face back">' +
-        '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
-        '<div class="leaf-face-content">' + backHtml + "</div>" +
-        "</div>" +
-        "</div>";
-      bookBody.appendChild(leaf);
-    }
-    applyLandscapeBlur(bookBody);
-    setupVideoInPage(bookBody);
-  }
-
-  function syncLeavesState() {
-    if (!layout || !layout.pages) return;
-    var totalLeaves = layout.pages.length - 1;
-    if (totalLeaves <= 0) return;
-    var leaves = document.querySelectorAll("#bookBody .leaf");
-    for (var i = 0; i < leaves.length; i++) {
-      var leaf = leaves[i];
-      var isFlipped = i < currentIndex;
-      leaf.classList.toggle("flipped", isFlipped);
-      leaf.style.zIndex = isFlipped ? String(i) : String(totalLeaves - i);
+      console.warn("[Album] Skipped init: flipbookRoot=" + !!flipbookRoot + ", initAlbumViewer=" + hasInit);
     }
   }
-
-  function updateIndicatorAndThumb(index) {
-    if (!layout || !layout.pages) return;
-    var page = layout.pages[index];
-    var total = layout.pages.length;
-    document.getElementById("pageIndicator").textContent =
-      getPageLabel(page, index, total) + " (" + (index + 1) + " / " + total + ")";
-    document.querySelectorAll(".thumb-item").forEach(function (el, i) {
-      el.classList.toggle("active", i === index);
-    });
-    var bar = document.getElementById("thumbBar");
-    var activeThumb = bar && bar.querySelector(".thumb-item.active");
-    if (activeThumb) {
-      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", runAlbumInit);
+  } else {
+    runAlbumInit();
   }
-
-  function showPage(index) {
-    if (!layout || !layout.pages || !layout.pages.length) return;
-    var pages = layout.pages;
-    currentIndex = Math.max(0, Math.min(index, pages.length - 1));
-    var page = pages[currentIndex];
-    updateIndicatorAndThumb(currentIndex);
-    if (isDesktop()) {
-      syncLeavesState();
-    } else {
-      var display = document.getElementById("pageDisplay");
-      disconnectVideoObserver();
-      display.innerHTML = renderPageContent(page, currentIndex, pages.length);
-      applyLandscapeBlur(display);
-      setupVideoInPage(display);
-    }
-  }
-
-  function goNext() {
-    if (!layout || !layout.pages || currentIndex >= layout.pages.length - 1) return;
-    showPage(currentIndex + 1);
-  }
-
-  function goPrev() {
-    if (!layout || !layout.pages || currentIndex <= 0) return;
-    showPage(currentIndex - 1);
-  }
-
-  function thumbHalfFilled(url, isVideo) {
-    if (isVideo) {
-      return '<div class="thumb-spread-half filled thumb-video-wrap">' +
-        '<video class="thumb-video-preview" src="' + url + '" muted playsinline preload="metadata"></video>' +
-        '<span class="thumb-play-icon">&#9654;</span></div>';
-    }
-    return '<div class="thumb-spread-half filled">' +
-      '<img src="' + url + '" alt="" loading="lazy" />' + '</div>';
-  }
-  function isVideoType(ft) {
-    return (ft && ft.toLowerCase() === "video") || false;
-  }
-  function buildThumbnailBar() {
-    const bar = document.getElementById("thumbBar");
-    bar.innerHTML = "";
-    const pages = layout.pages;
-    pages.forEach(function (page, i) {
-      const label = getPageLabel(page, i, pages.length);
-      var thumbInner = "";
-      if (page.type === "front") {
-        var r = page.right ? toRawUrl(page.right) : "";
-        var rVideo = isVideoType((page.file_types && page.file_types.right)) || isVideoPath(page.right);
-        thumbInner =
-          '<div class="thumb-spread">' +
-          '<div class="thumb-spread-half blank"></div>' +
-          (r ? thumbHalfFilled(r, rVideo) : '<div class="thumb-spread-half"></div>') +
-          "</div>";
-      } else if (page.type === "back") {
-        var l = page.left ? toRawUrl(page.left) : "";
-        var lVideo = isVideoType((page.file_types && page.file_types.left)) || isVideoPath(page.left);
-        thumbInner =
-          '<div class="thumb-spread">' +
-          (l ? thumbHalfFilled(l, lVideo) : '<div class="thumb-spread-half"></div>') +
-          '<div class="thumb-spread-half blank"></div>' +
-          "</div>";
-      } else {
-        var lUrl = (page.type === "spread" && page.left) ? toRawUrl(page.left) : "";
-        var rUrl = (page.type === "spread" && page.right) ? toRawUrl(page.right) : "";
-        var lVideo = isVideoType((page.file_types && page.file_types.left)) || isVideoPath(page.left);
-        var rVideo = isVideoType((page.file_types && page.file_types.right)) || isVideoPath(page.right);
-        thumbInner =
-          '<div class="thumb-spread">' +
-          (lUrl ? thumbHalfFilled(lUrl, lVideo) : '<div class="thumb-spread-half blank"></div>') +
-          (rUrl ? thumbHalfFilled(rUrl, rVideo) : '<div class="thumb-spread-half blank"></div>') +
-          "</div>";
-      }
-      const div = document.createElement("div");
-      div.className = "thumb-item" + (i === 0 ? " active" : "");
-      div.dataset.index = String(i);
-      div.innerHTML = thumbInner + '<div class="thumb-label">' + escapeHtml(label) + "</div>";
-      div.addEventListener("click", function () {
-        if (i === currentIndex) return;
-        showPage(i);
-      });
-      bar.appendChild(div);
-    });
-  }
-
-  fetch("/outputs/" + encodeURIComponent(projectId) + "/album_layout.json")
-    .then(function (r) {
-      if (!r.ok) throw new Error(r.statusText);
-      return r.json();
-    })
-    .then(function (data) {
-      layout = data;
-      document.getElementById("loadingState").classList.add("hidden");
-      if (!data.pages || !data.pages.length) {
-        document.getElementById("errorState").classList.remove("hidden");
-        document.getElementById("errorState").textContent = "앨범 페이지가 비어 있습니다.";
-        return;
-      }
-      document.getElementById("flipbookState").classList.remove("hidden");
-      buildThumbnailBar();
-      buildLeaves();
-      showPage(0);
-    })
-    .catch(function (err) {
-      document.getElementById("loadingState").classList.add("hidden");
-      document.getElementById("errorState").classList.remove("hidden");
-      document.getElementById("errorState").textContent = "앨범을 불러올 수 없습니다.";
-      console.warn("album_layout.json load failed:", err);
-    });
-
-  document.getElementById("clickNext").addEventListener("click", function (e) {
-    e.preventDefault();
-    goNext();
-  });
-  document.getElementById("clickPrev").addEventListener("click", function (e) {
-    e.preventDefault();
-    goPrev();
-  });
-
-  document.getElementById("pageDisplay").addEventListener("click", function (e) {
-    if (e.target.closest("video") || (e.target.closest(".media-frame") && e.target.closest(".media-frame").querySelector("video"))) return;
-    var rect = e.currentTarget.getBoundingClientRect();
-    var mid = rect.left + rect.width / 2;
-    if (e.clientX < mid) goPrev();
-    else goNext();
-  });
-
-  document.getElementById("bookContainer").addEventListener("click", function (e) {
-    if (!isDesktop()) return;
-    if (e.target.closest("video") || (e.target.closest(".media-frame") && e.target.closest(".media-frame").querySelector("video"))) return;
-    var rect = e.currentTarget.getBoundingClientRect();
-    var mid = rect.left + rect.width / 2;
-    if (e.clientX < mid) goPrev();
-    else goNext();
-  });
-
-  document.getElementById("btnSave").addEventListener("click", function () {
-    console.log("앨범 저장 (API 연동 예정)");
-  });
-
-  window.addEventListener("resize", function () {
-    if (!layout || !layout.pages) return;
-    showPage(currentIndex);
-  });
 })();
 </script>
-{% endblock %}
+<script>
+(function () {
+  setTimeout(function () {
+    var flipbookState = document.getElementById("flipbookState");
+    var loadingState = document.getElementById("loadingState");
+    var errorState = document.getElementById("errorState");
+    var bookBody = document.getElementById("bookBody");
+    var stillHidden = flipbookState && flipbookState.classList.contains("hidden");
+    var emptyBody = !bookBody || !bookBody.innerHTML.trim();
+    if (stillHidden && emptyBody && errorState && errorState.classList.contains("hidden")) {
+      if (loadingState) loadingState.classList.add("hidden");
+      errorState.classList.remove("hidden");
+      errorState.innerHTML = "앨범이 표시되지 않았습니다. F12 → 콘솔에서 [Album] 로그와 네트워크 탭에서 /static/js/album-viewer-init.js, album_layout.json 요청을 확인하세요.";
+    }
+  }, 5000);
+})();
+</script>
+<script>
+(function () {
+  const root = document.getElementById("viewerRoot");
+  const projectId = root && root.getAttribute("data-project-id");
+  const authModal = document.getElementById("authModal");
+  const authModalBackdrop = document.getElementById("authModalBackdrop");
+  const authModalLater = document.getElementById("authModalLater");
+  const authModalLoginForm = document.getElementById("authModalLoginForm");
+  const authModalSignupBtn = document.getElementById("authModalSignupBtn");
+  const authModalFormError = document.getElementById("authModalFormError");
+  const authModalEmail = document.getElementById("authModalEmail");
+  const authModalPassword = document.getElementById("authModalPassword");
+
+  function showAuthModal() { if (authModal) authModal.classList.remove("hidden"); showLoginPanel(); }
+  function hideAuthModal() { if (authModal) authModal.classList.add("hidden"); }
+
+  var headerAuthBtn = document.getElementById("headerAuthBtn");
+  function updateHeaderAuthState() {
+    if (!headerAuthBtn) return;
+    fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
+      if (r.ok) window.location.reload();
+      else {
+        headerAuthBtn.textContent = "로그인";
+        headerAuthBtn.onclick = onSignInClick;
+      }
+    });
+  }
+  function onSignInClick() { showAuthModal(); }
+  updateHeaderAuthState();
+
+  function showFormError(msg) { if (authModalFormError) { authModalFormError.textContent = msg || ""; authModalFormError.classList.toggle("hidden", !msg); } }
+  function detailToMessage(d) {
+    if (!d || d.detail === undefined) return "요청에 실패했습니다.";
+    if (typeof d.detail === "string") return d.detail;
+    if (Array.isArray(d.detail) && d.detail[0]) return d.detail[0].msg || (d.detail[0].loc && d.detail[0].loc.join(" ")) || "입력값을 확인해 주세요.";
+    return "요청에 실패했습니다.";
+  }
+  function showLoginPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.remove("hidden");
+    if (sp) sp.classList.add("hidden");
+    showFormError("");
+  }
+  function showSignupPanel() {
+    var lp = document.getElementById("authModalLoginPanel");
+    var sp = document.getElementById("authModalSignupPanel");
+    if (lp) lp.classList.add("hidden");
+    if (sp) sp.classList.remove("hidden");
+    showFormError("");
+  }
+
+  function claimProjectId() {
+    if (!projectId) return Promise.resolve();
+    return fetch("/api/projects/" + encodeURIComponent(projectId) + "/claim", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+  }
+
+  function onSaveClick() {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then(function (r) {
+        if (r.status === 401) {
+          showAuthModal();
+          return;
+        }
+        if (r.ok && projectId) {
+          return claimProjectId().then(function () { alert("저장되었습니다."); });
+        }
+      });
+  }
+
+  var btnSave = document.getElementById("btnSave");
+  if (btnSave) btnSave.addEventListener("click", onSaveClick);
+  if (authModalLater) authModalLater.addEventListener("click", hideAuthModal);
+  if (authModalBackdrop) authModalBackdrop.addEventListener("click", hideAuthModal);
+
+  if (authModalLoginForm) {
+    authModalLoginForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalEmail.value, password: authModalPassword.value })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+      }).catch(function () { showFormError("로그인 요청에 실패했습니다."); });
+    });
+  }
+  if (authModalSignupBtn) {
+    authModalSignupBtn.addEventListener("click", showSignupPanel);
+  }
+  var authModalSignupPanel = document.getElementById("authModalSignupPanel");
+  var authModalSignupForm = document.getElementById("authModalSignupForm");
+  var authModalSignupEmail = document.getElementById("authModalSignupEmail");
+  var authModalSignupPassword = document.getElementById("authModalSignupPassword");
+  var authModalSignupPasswordConfirm = document.getElementById("authModalSignupPasswordConfirm");
+  var authModalSignupBack = document.getElementById("authModalSignupBack");
+  var authModalSignupClose = document.getElementById("authModalSignupClose");
+  var authModalSignupToLoginLink = document.getElementById("authModalSignupToLoginLink");
+  var authModalSignupLater = document.getElementById("authModalSignupLater");
+  if (authModalSignupBack) authModalSignupBack.addEventListener("click", showLoginPanel);
+  if (authModalSignupClose) authModalSignupClose.addEventListener("click", hideAuthModal);
+  if (authModalSignupToLoginLink) authModalSignupToLoginLink.addEventListener("click", function (e) { e.preventDefault(); showLoginPanel(); });
+  if (authModalSignupLater) authModalSignupLater.addEventListener("click", hideAuthModal);
+  if (authModalSignupForm) {
+    authModalSignupForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      showFormError("");
+      var pwd = authModalSignupPassword && authModalSignupPassword.value;
+      var pwdConfirm = authModalSignupPasswordConfirm && authModalSignupPasswordConfirm.value;
+      if (pwd !== pwdConfirm) {
+        showFormError("비밀번호가 일치하지 않습니다.");
+        return;
+      }
+      fetch("/api/auth/signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authModalSignupEmail.value, password: pwd })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
+        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+      }).catch(function () { showFormError("회원가입 요청에 실패했습니다."); });
+    });
+  }
+
+  (function tryClaimOnLoad() {
+    if (!projectId) return;
+    fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
+      if (r.ok) claimProjectId();
+    });
+  })();
+
+  var btnShare = document.getElementById("btnShare");
+  if (btnShare) {
+    btnShare.addEventListener("click", function () {
+      var root = document.getElementById("viewerRoot");
+      var url = root && root.getAttribute("data-project-id")
+        ? (window.location.origin + "/viewer/" + (root.getAttribute("data-project-type") || "album") + "/" + root.getAttribute("data-project-id"))
+        : window.location.href;
+      if (navigator.share) {
+        navigator.share({ title: document.title || "Flairy", url: url }).then(function () { alert("공유되었습니다."); }).catch(function () {
+          navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { alert(url); });
+        });
+      } else {
+        navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { prompt("아래 주소를 복사하세요.", url); });
+      }
+    });
+  }
+})();
+</script>
+{% endblock scripts %}

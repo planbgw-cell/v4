@@ -33,7 +33,7 @@ def _check_heic_deps() -> None:
 from app.crud import get_media_files_by_project, get_project, update_project_status
 from app.database import ensure_logs_column, SessionLocal
 from app.models import MediaFile, Project
-from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation
+from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
 from app.utils.path_manager import (
     CINEMATIC_FONT_PRIMARY,
     CINEMATIC_FONT_FALLBACK,
@@ -382,6 +382,39 @@ class FlairyVideoEngine:
         )
         rot_prefix = ",".join(rot_filters) + "," if rot_filters else ""
 
+        aspect_src = w / h if h else 0
+        aspect_916 = CANVAS_W / CANVAS_H
+        is_portrait = (w < h)
+
+        # Rule-based: 세로/가로 비율별 처리 — 가로는 블러 배경 + 전경, 세로는 채우기 또는 letterbox
+        if not use_ai:
+            if abs(aspect_src - aspect_916) < 0.01:
+                simple = (
+                    f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=decrease,"
+                    f"pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:(oh-ih)/2:black,"
+                ) + ZOOMPAN_916 + "[vid]"
+                return rot_prefix + simple
+            if is_portrait:
+                scale = max(CANVAS_W / w, CANVAS_H / h)
+                scaled_w = w * scale
+                scaled_h = h * scale
+                crop_left = (scaled_w - CANVAS_W) / 2.0
+                crop_top = (scaled_h - CANVAS_H) / 2.0
+                fill_crop = (
+                    f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                    f"crop={CANVAS_W}:{CANVAS_H}:{int(crop_left)}:{int(crop_top)}"
+                )
+                return rot_prefix + fill_crop + "," + ZOOMPAN_916 + "[vid]"
+            # 가로(landscape): 블러 배경 + 밝기 감소 + 전경 중앙 배치
+            blur_chain = (
+                f"split[src][dup];"
+                f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
+                f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
+                f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]"
+            )
+            return rot_prefix + blur_chain
+
         # 로깅: AI는 DB 기준 세로/가로만
         if use_db_dimensions:
             is_portrait_db = w < h
@@ -398,8 +431,6 @@ class FlairyVideoEngine:
         subject_box = self._parse_subject_box(ai_analysis)
         use_ai_focus = use_ai and subject_box is not None
 
-        aspect_src = w / h if h else 0
-        aspect_916 = CANVAS_W / CANVAS_H
         if abs(aspect_src - aspect_916) < 0.01:
             simple = (
                 f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=decrease,"
@@ -408,7 +439,6 @@ class FlairyVideoEngine:
             return rot_prefix + simple
 
         # 세로(Portrait): width < height (DB/물리 규격 기준, EXIF 미참조)
-        is_portrait = (w < h)
         logger.info(
             "916_vf: file=%s wh=(%s,%s) is_portrait=%s (width<height) use_ai_focus=%s",
             file_id, w, h, is_portrait, use_ai_focus,
@@ -433,11 +463,11 @@ class FlairyVideoEngine:
                 return rot_prefix + fill_crop + "," + zoompan + "[vid]"
             return rot_prefix + fill_crop + "," + ZOOMPAN_916 + "[vid]"
 
-        # 가로(landscape): 블러 배경(40:20) + 전경. AI 시 피사체 중심으로 패닝
+        # 가로(landscape): 블러 배경(40:20) + 밝기 감소 + 전경. AI 시 피사체 중심으로 패닝
         blur_chain = (
             f"split[src][dup];"
             f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-            f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR}[bg];"
+            f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
             f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
         )
         if use_ai_focus and subject_box:
@@ -491,6 +521,22 @@ class FlairyVideoEngine:
                 logger.warning("[RENDER] upright 파일 없음, 원본 사용: %s", media_file.file_path)
         else:
             input_path = self.base_dir / media_file.file_path
+
+        # Rule-based: EXIF 전처리로 물리 방향 보정 후 9:16 letterbox 적용
+        if not use_ai and input_path.suffix.lower() in IMAGE_EXTENSIONS:
+            try:
+                upright_img = load_image_upright(input_path)
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+                upright_path = self.temp_dir / f"upright_{index:04d}.png"
+                upright_img.convert("RGB").save(upright_path)
+                input_path = upright_path
+                used_upright_file = True
+                logger.info("[RENDER] Rule-based: EXIF 전처리 적용 %s -> %s", media_file.file_path, upright_path.name)
+                self._append_log(f"Rule-based: EXIF 전처리 적용 ({Path(media_file.file_path).name})")
+            except Exception as e:
+                logger.warning("[RENDER] Rule-based EXIF 전처리 실패, 원본 사용: %s", e)
+                self._append_log(f"Rule-based EXIF 전처리 실패, 원본 사용: {e}")
+
         if not input_path.is_file():
             raise FileNotFoundError(f"미디어 파일 없음: {input_path}")
 

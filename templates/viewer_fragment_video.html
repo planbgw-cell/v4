@@ -1,0 +1,16 @@
+{# HX-Request 시 반환: base 상속 없이 뷰어 콘텐츠만 (스타일 포함) #}
+{% include "partials/_viewer_styles.html" %}
+<div class="max-w-md mx-auto px-4 py-6" id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}">
+  <h1 class="text-lg font-semibold text-gray-800 text-center mb-4 truncate">{{ project_title }}</h1>
+  {% if video_url %}
+  <div class="content-video">
+    <div class="player-9-16 rounded-xl shadow-xl" id="playerContainer">
+      <video class="player-blur" id="blurLayer" src="{{ video_url }}" muted loop playsinline preload="metadata"></video>
+      <video class="player-video" id="mainVideo" src="{{ video_url }}" controls playsinline preload="metadata"></video>
+    </div>
+  </div>
+  {% else %}
+  <div class="player-9-16 rounded-xl bg-gray-200 flex items-center justify-center text-gray-500">영상이 아직 없습니다.</div>
+  {% endif %}
+  {% include "partials/_viewer_actions.html" %}
+</div>

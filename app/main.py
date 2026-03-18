@@ -26,14 +26,24 @@ from uuid import UUID
 
 logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("engine").setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.crud import get_project
-from app.database import SessionLocal, ensure_ai_progress_columns, ensure_logs_column, ensure_project_type_column
+from app.auth.dependencies import get_current_user_optional, COOKIE_KEY
+from app.crud import get_project, get_projects_by_user_id
+from app.database import (
+    SessionLocal,
+    ensure_ai_progress_columns,
+    ensure_logs_column,
+    ensure_project_type_column,
+    ensure_user_id_column,
+)
+from app.routes import auth as auth_router
+from app.routes import project as project_router
 from app.routes import upload as upload_router
 from app.routes import status as status_router
 from app.routes import generate as generate_router
@@ -51,10 +61,15 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.on_event("startup")
 def on_startup():
-    """앱 기동 시 projects 로그·AI 진행률·project_type 컬럼이 없으면 추가."""
+    """앱 기동 시 projects 로그·AI 진행률·project_type·user_id 컬럼이 없으면 추가."""
     ensure_logs_column()
     ensure_ai_progress_columns()
     ensure_project_type_column()
+    ensure_user_id_column()
+
+
+app.include_router(auth_router.router)
+app.include_router(project_router.router)
 app.include_router(upload_router.router)
 app.include_router(status_router.router)
 app.include_router(generate_router.router)
@@ -67,9 +82,58 @@ if RAW_DIR.exists():
     app.mount("/raw", StaticFiles(directory=str(RAW_DIR)), name="raw")
 
 
+def _mypage_thumbnail_url(project_id: UUID, first_media_path: str | None) -> str | None:
+    """첫 미디어 경로로 썸네일 URL 생성 (마이페이지용)."""
+    if not first_media_path:
+        return None
+    parts = first_media_path.replace("\\", "/").strip("/").split("/")
+    if len(parts) >= 4 and parts[0] == "storage" and parts[1] == "raw":
+        return f"/raw/{project_id}/{parts[-1]}"
+    return None
+
+
+@app.get("/auth/logout", response_class=RedirectResponse)
+async def auth_logout():
+    """JWT 쿠키 삭제 후 메인(/)으로 리다이렉트."""
+    response = RedirectResponse(url="/", status_code=302)
+    response.delete_cookie(COOKIE_KEY, path="/")
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def index(request: Request, current_user=Depends(get_current_user_optional)):
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "current_user": current_user}
+    )
+
+
+@app.get("/mypage", response_class=HTMLResponse)
+async def mypage_page(
+    request: Request,
+    current_user=Depends(get_current_user_optional),
+):
+    """내 보관함. 로그인 필수; 비로그인 시 / 로 리다이렉트."""
+    if current_user is None:
+        return RedirectResponse(url="/", status_code=302)
+    db = SessionLocal()
+    try:
+        projects_raw = get_projects_by_user_id(db, current_user.id)
+        projects = []
+        for p in projects_raw:
+            first_path = p.media_files[0].file_path if p.media_files else None
+            projects.append({
+                "project_id": str(p.id),
+                "project_type": p.project_type or "video",
+                "title": p.title or "",
+                "thumbnail_url": _mypage_thumbnail_url(p.id, first_path),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            })
+        return templates.TemplateResponse(
+            "mypage.html",
+            {"request": request, "projects": projects, "current_user": current_user},
+        )
+    finally:
+        db.close()
 
 
 def _progress_debug(debug: str) -> bool:
@@ -129,29 +193,43 @@ async def progress_page_legacy(request: Request, project_id: str = "", debug: st
         db.close()
 
 
+def _render_project_error(request: Request, status_code: int = 404, current_user=None):
+    """존재하지 않거나 권한이 없는 프로젝트 안내 페이지."""
+    return templates.TemplateResponse(
+        "error_project.html",
+        {"request": request, "current_user": current_user},
+        status_code=status_code,
+    )
+
+
 @app.get("/viewer/{type}/{project_id}", response_class=HTMLResponse)
-async def viewer_page(request: Request, type: str, project_id: str):
-    """뷰어. type으로 템플릿 즉시 결정. video→viewer.html, album→viewer_album.html. DB는 제목·출력 경로만 조회."""
+async def viewer_page(
+    request: Request,
+    type: str,
+    project_id: str,
+    mode: str | None = None,
+    current_user=Depends(get_current_user_optional),
+):
+    """뷰어. type으로 템플릿 즉시 결정. mode=mypage면 마이페이지 조회용 버튼(공유/다운로드), 없으면 생성 모드(저장/내 보관함)."""
     if type not in ("video", "album"):
-        return HTMLResponse(
-            "<!DOCTYPE html><html><body><p>type은 video 또는 album이어야 합니다.</p><a href='/'>랜딩</a></body></html>",
-            status_code=404,
-        )
+        return _render_project_error(request, 404, current_user)
     try:
         uid = UUID(project_id)
     except ValueError:
-        return HTMLResponse(
-            "<!DOCTYPE html><html><body><p>잘못된 project_id입니다.</p><a href='/'>랜딩</a></body></html>",
-            status_code=404,
-        )
+        return _render_project_error(request, 404, current_user)
     db = SessionLocal()
     try:
         project = get_project(db, uid)
         if not project:
-            return HTMLResponse(
-                "<!DOCTYPE html><html><body><p>프로젝트를 찾을 수 없습니다.</p><a href='/'>랜딩</a></body></html>",
-                status_code=404,
-            )
+            return _render_project_error(request, 404, current_user)
+        project_mode = getattr(project, "mode", None)
+        if project_mode is not None and hasattr(project_mode, "value"):
+            project_mode = project_mode.value
+        if project_mode is None:
+            project_mode = "rule_based"
+        if type == "album":
+            media_files = getattr(project, "media_files", None) or []
+            logger.info("[Album Viewer] project_id=%s media_count=%s", project_id, len(media_files))
         title = project.title or ("디지털 앨범" if type == "album" else "하이라이트 영상")
         video_url = None
         if type == "video" and project.output_path:
@@ -161,10 +239,26 @@ async def viewer_page(request: Request, type: str, project_id: str):
                 video_url = f"/outputs/{project_id}/output.mp4"
     finally:
         db.close()
-    template = "viewer.html" if type == "video" else "viewer_album.html"
-    ctx = {"request": request, "project_id": project_id, "project_title": title}
+    ctx = {
+        "request": request,
+        "project_id": project_id,
+        "project_title": title,
+        "current_url": request.url.path,
+        "project_type": type,
+        "mode": mode,
+        "project_mode": project_mode,
+        "current_user": current_user,
+    }
     if type == "video":
         ctx["video_url"] = video_url
+
+    # HTMX 요청 시 조각만 반환 (전체 html/body 중복 방지, 스타일은 조각 내부에 포함)
+    if request.headers.get("HX-Request"):
+        if type == "video":
+            return templates.TemplateResponse("viewer_fragment_video.html", ctx)
+        if type == "album":
+            return templates.TemplateResponse("viewer_fragment_album.html", ctx)
+    template = "viewer.html" if type == "video" else "viewer_album.html"
     return templates.TemplateResponse(template, ctx)
 
 

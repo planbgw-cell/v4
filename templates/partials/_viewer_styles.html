@@ -1,0 +1,140 @@
+{# 뷰어 전용 스타일: HTMX로 조각 삽입 시에도 적용되도록 body 내부에서 주입 #}
+<style>
+  /* ----- 공통: Unified Viewer Stage ----- */
+  .viewer-stage {
+    min-height: 100vh; /* 페이지 전체 스크롤만 사용 */
+    height: auto !important;
+    overflow: visible !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 4px 20px;
+    padding-bottom: 1rem !important; /* 하단 버튼과 응집 */
+    gap: 0.5rem !important;
+    background: #F8FAFC;
+    background: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%);
+  }
+
+  /* ----- 뷰어 하단 버튼 영역: 콘텐츠와 간격 최소화 ----- */
+  .footer-actions {
+    margin-top: 0.5rem !important;
+    padding-top: 0 !important;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    width: 100%;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* 뷰어 하단 래퍼: 버튼 위아래 여백 축소 */
+  .floating-controls {
+    padding: 0.5rem 0 1rem 0 !important;
+  }
+
+  /* ----- 영상 뷰어 (9:16 고정, 블러+메인 레이어) ----- */
+  .content-video {
+    width: 100% !important;
+    max-width: min(400px, 90vw) !important;
+    aspect-ratio: 9 / 16 !important;
+    margin: 0 auto !important;
+    height: auto !important;
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    background: #000;
+    position: relative;
+  }
+  .player-9-16 {
+    width: 100% !important;
+    height: 100% !important;
+    position: relative;
+    overflow: hidden;
+    background: #1a1a1a;
+  }
+  .player-blur {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(20px) brightness(0.7);
+    transform: scale(1.1);
+  }
+  .player-video {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center center;
+    z-index: 2;
+  }
+  .player-video.portrait {
+    object-position: top center;
+  }
+
+  /* ----- 앨범 뷰어: 콘텐츠 래퍼 (max-height 70vh, 통일 shadow) ----- */
+  .content-album-wrapper {
+    width: 100%;
+    max-width: min(1000px, 95vw);
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ----- 앨범 하단 썸네일 바: v3 스타일 가로 스크롤 복구 ----- */
+  #thumbBar,
+  .thumb-bar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    width: 100% !important;
+    padding: 15px 10px 5px 10px !important; /* 하단만 5px: 버튼과 응집 */
+    margin-bottom: 0 !important;
+    gap: 12px !important;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  .thumb-item {
+    flex: 0 0 auto !important;
+    width: 80px !important;
+    height: auto;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  #thumbBar::-webkit-scrollbar,
+  .thumb-bar::-webkit-scrollbar {
+    height: 8px;
+  }
+  #thumbBar::-webkit-scrollbar-track,
+  .thumb-bar::-webkit-scrollbar-track {
+    background: #eeeeee;
+    border-radius: 4px;
+  }
+  #thumbBar::-webkit-scrollbar-thumb,
+  .thumb-bar::-webkit-scrollbar-thumb {
+    background: #bbbbbb;
+    border-radius: 4px;
+  }
+  #thumbBar::-webkit-scrollbar-thumb:hover,
+  .thumb-bar::-webkit-scrollbar-thumb:hover {
+    background: #999999;
+  }
+
+  /* 앨범 뷰어 전용: 제목/뷰어/썸네일 간격 축소 (같은 파일 내에서 전역 .viewer-stage 덮기) */
+  main.album-viewer-page .viewer-stage {
+    gap: 0.125rem !important;
+    padding-top: 0 !important;
+  }
+  main.album-viewer-page .viewer-stage h1 {
+    margin-bottom: 0.125rem !important;
+    margin-top: 0 !important;
+  }
+</style>

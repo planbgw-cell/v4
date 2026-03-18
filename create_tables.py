@@ -10,9 +10,10 @@ root = Path(__file__).resolve().parent
 if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
-from app.database import Base, engine
+from app.database import Base, engine, ensure_user_id_column
 from app import models  # noqa: F401 - register models with Base.metadata
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
-    print("테이블 생성 완료: projects, media_files")
+    ensure_user_id_column()
+    print("테이블 생성/스키마 점검 완료: users, projects, media_files (projects.user_id)")

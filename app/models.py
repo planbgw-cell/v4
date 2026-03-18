@@ -1,6 +1,6 @@
 """
 Flairy v4.0 DB 모델.
-PostgreSQL 15 / Supabase 호환. UUID, JSONB 사용.
+PostgreSQL 15. UUID, JSONB 사용. SQLAlchemy + 로컬 PostgreSQL.
 """
 import enum
 import uuid
@@ -17,10 +17,27 @@ class ProjectMode(str, enum.Enum):
     RULE_BASED = "rule_based"
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=True)  # 소셜 로그인 시 null
+    provider = Column(String(20), nullable=False, default="local")  # local | google | apple
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    projects = relationship("Project", back_populates="user")
+
+
 class Project(Base):
     __tablename__ = "projects"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     title = Column(String(255), nullable=False)
     mode = Column(Enum(ProjectMode), nullable=False)
     status = Column(String(50), nullable=False, default="PENDING")
@@ -31,6 +48,7 @@ class Project(Base):
     ai_total_count = Column(Integer, default=0, nullable=False)
     ai_processed_count = Column(Integer, default=0, nullable=False)
 
+    user = relationship("User", back_populates="projects")
     media_files = relationship("MediaFile", back_populates="project", cascade="all, delete-orphan")
 
 

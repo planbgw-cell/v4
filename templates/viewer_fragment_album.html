@@ -1,0 +1,35 @@
+{# HX-Request 시 반환: base 상속 없이 앨범 뷰어 콘텐츠만 (스타일 포함). initAlbumViewer는 마이페이지에서 호출. #}
+{% include "partials/_viewer_styles.html" %}
+{% include "partials/_viewer_album_styles.html" %}
+<div class="album-viewer-page" id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}">
+  <h1 class="text-lg font-semibold text-gray-800 text-center truncate album-viewer-title">Digital Album — {{ project_title }}</h1>
+
+  <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
+    <div id="loadingState" class="text-center py-16 text-gray-500">
+      앨범을 불러오는 중...
+    </div>
+    <div id="errorState" class="text-center py-16 text-red-600 hidden">
+      앨범을 불러올 수 없습니다.
+    </div>
+    <div id="flipbookState" class="hidden album-viewer-layout">
+      <div class="album-top-section">
+        <div class="flipbook-inner">
+          <div id="clickPrev" class="click-zone prev" title="이전"></div>
+          <div id="clickNext" class="click-zone next" title="다음"></div>
+          <div id="bookContainer" class="book-container book-mode">
+            <div class="book-floor" aria-hidden="true"></div>
+            <div id="bookBody" class="book-body"></div>
+          </div>
+          <div id="pageDisplay" class="page-display single-mode"></div>
+        </div>
+      </div>
+      <div class="album-bottom-section">
+        <div class="thumbnail-bar-wrapper">
+          <div id="thumbBar" class="thumb-bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% include "partials/_viewer_actions.html" %}
+</div>

@@ -1,0 +1,15 @@
+{# 공통 상단: Flairy 브랜드 + 인증 상태에 따른 우측 메뉴 (로그인 / 내 보관함·로그아웃) #}
+<header class="flex justify-between items-center mb-4">
+  <div class="flex items-center gap-2">
+    <a href="/" class="text-2xl font-bold text-indigo-600">Flairy</a>
+    <span class="text-gray-500">디지털 앨범 서비스</span>
+  </div>
+  <div class="flex items-center gap-3">
+    {% if current_user %}
+    <a href="/mypage" class="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium">내 보관함</a>
+    <a href="/auth/logout" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">로그아웃</a>
+    {% else %}
+    <button type="button" id="headerAuthBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">로그인</button>
+    {% endif %}
+  </div>
+</header>
