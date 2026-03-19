@@ -1,5 +1,14 @@
 {% extends "layouts/base.html" %}
 {% block title %}Flairy - 디지털 앨범 서비스{% endblock %}
+{% block head %}
+{% if share_meta is defined %}
+<meta property="og:title" content="{{ share_meta.title }}">
+<meta property="og:description" content="{{ share_meta.description }}">
+{% if share_meta.image %}<meta property="og:image" content="{{ share_meta.image }}">{% endif %}
+<meta property="og:url" content="{{ share_meta.url }}">
+<meta property="og:type" content="{{ share_meta.type }}">
+{% endif %}
+{% endblock %}
 
 {% block content %}
 {% include "partials/_viewer_styles.html" %}
@@ -39,6 +48,7 @@
 <footer class="floating-controls">
   {% include "partials/_viewer_actions.html" %}
 </footer>
+{% include "partials/share_modal.html" %}
 {% include "partials/auth_modal.html" %}
 {% endblock content %}
 
@@ -196,22 +206,20 @@
     });
   })();
 
-  var btnShare = document.getElementById("btnShare");
-  if (btnShare) {
-    btnShare.addEventListener("click", function () {
-      var root = document.getElementById("viewerRoot");
-      var url = root && root.getAttribute("data-project-id")
-        ? (window.location.origin + "/viewer/" + (root.getAttribute("data-project-type") || "video") + "/" + root.getAttribute("data-project-id"))
-        : window.location.href;
-      if (navigator.share) {
-        navigator.share({ title: document.title || "Flairy", url: url }).then(function () { alert("공유되었습니다."); }).catch(function () {
-          navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { alert(url); });
-        });
-      } else {
-        navigator.clipboard.writeText(url).then(function () { alert("주소가 복사되었습니다."); }).catch(function () { prompt("아래 주소를 복사하세요.", url); });
-      }
-    });
-  }
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+{% if kakao_js_key %}
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
+{% endif %}
+<script src="/static/js/sharing_module.js"></script>
+<script>
+(function () {
+  if (!window.FlairySharing || !window.FlairySharing.init) return;
+  window.FlairySharing.init({
+    kakaoJsKey: "{{ kakao_js_key or '' }}",
+    fallbackImageUrl: "{{ share_meta.image if share_meta is defined and share_meta.image else '' }}"
+  });
 })();
 </script>
 {% endblock scripts %}

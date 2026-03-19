@@ -23,6 +23,7 @@ import logging
 import os
 from pathlib import Path
 from uuid import UUID
+from urllib.parse import quote
 
 logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("engine").setLevel(logging.INFO)
@@ -92,6 +93,57 @@ def _mypage_thumbnail_url(project_id: UUID, first_media_path: str | None) -> str
     return None
 
 
+def _project_title_by_type(type: str) -> str:
+    return "디지털 앨범" if type == "album" else "하이라이트 영상"
+
+
+def _project_video_url(type: str, project_id: str, output_path: str | None) -> str | None:
+    if type != "video" or not output_path:
+        return None
+    if output_path == f"storage/final/{project_id}.mp4":
+        return f"/outputs/{project_id}.mp4"
+    return f"/outputs/{project_id}/output.mp4"
+
+
+def _project_media_thumb_url(project_id: str, media_files) -> str | None:
+    media_files = media_files or []
+    for media in media_files:
+        file_path = getattr(media, "file_path", None)
+        if not file_path:
+            continue
+        parts = file_path.replace("\\", "/").strip("/").split("/")
+        if len(parts) >= 4 and parts[0] == "storage" and parts[1] == "raw":
+            return f"/raw/{project_id}/{quote(parts[-1])}"
+    return None
+
+
+def _absolute_url(request: Request, relative_path: str | None) -> str | None:
+    if not relative_path:
+        return None
+    return str(request.url_for("index")).rstrip("/") + relative_path
+
+
+def _build_share_meta(
+    request: Request,
+    project_id: str,
+    project_type: str,
+    project_title: str,
+    project_mode: str,
+    og_image: str | None,
+) -> dict:
+    share_path = f"/share/{project_type}/{project_id}"
+    mode_name = "AI 적용" if project_mode == "ai" else "BASIC 적용"
+    og_title = f"{project_title} | Flairy"
+    og_desc = f"Flairy {mode_name}로 생성된 {('디지털 앨범' if project_type == 'album' else '하이라이트 영상')}입니다."
+    return {
+        "title": og_title,
+        "description": og_desc,
+        "image": _absolute_url(request, og_image),
+        "url": _absolute_url(request, share_path),
+        "type": "website",
+    }
+
+
 @app.get("/auth/logout", response_class=RedirectResponse)
 async def auth_logout():
     """JWT 쿠키 삭제 후 메인(/)으로 리다이렉트."""
@@ -130,7 +182,12 @@ async def mypage_page(
             })
         return templates.TemplateResponse(
             "mypage.html",
-            {"request": request, "projects": projects, "current_user": current_user},
+            {
+                "request": request,
+                "projects": projects,
+                "current_user": current_user,
+                "kakao_js_key": os.getenv("KAKAO_JS_KEY", "").strip(),
+            },
         )
     finally:
         db.close()
@@ -230,13 +287,9 @@ async def viewer_page(
         if type == "album":
             media_files = getattr(project, "media_files", None) or []
             logger.info("[Album Viewer] project_id=%s media_count=%s", project_id, len(media_files))
-        title = project.title or ("디지털 앨범" if type == "album" else "하이라이트 영상")
-        video_url = None
-        if type == "video" and project.output_path:
-            if project.output_path == f"storage/final/{project_id}.mp4":
-                video_url = f"/outputs/{project_id}.mp4"
-            else:
-                video_url = f"/outputs/{project_id}/output.mp4"
+        title = project.title or _project_title_by_type(type)
+        video_url = _project_video_url(type, project_id, project.output_path)
+        thumb_url = _project_media_thumb_url(project_id, getattr(project, "media_files", None))
     finally:
         db.close()
     ctx = {
@@ -248,6 +301,9 @@ async def viewer_page(
         "mode": mode,
         "project_mode": project_mode,
         "current_user": current_user,
+        "share_url": _absolute_url(request, f"/share/{type}/{project_id}"),
+        "kakao_js_key": os.getenv("KAKAO_JS_KEY", "").strip(),
+        "share_meta": _build_share_meta(request, project_id, type, title, project_mode, thumb_url),
     }
     if type == "video":
         ctx["video_url"] = video_url
@@ -258,6 +314,54 @@ async def viewer_page(
             return templates.TemplateResponse("viewer_fragment_video.html", ctx)
         if type == "album":
             return templates.TemplateResponse("viewer_fragment_album.html", ctx)
+    template = "viewer.html" if type == "video" else "viewer_album.html"
+    return templates.TemplateResponse(template, ctx)
+
+
+@app.get("/share/{type}/{project_id}", response_class=HTMLResponse)
+async def share_viewer_page(
+    request: Request,
+    type: str,
+    project_id: str,
+    current_user=Depends(get_current_user_optional),
+):
+    """외부 공유 전용 뷰어. 비로그인 접근 허용."""
+    if type not in ("video", "album"):
+        return _render_project_error(request, 404, current_user)
+    try:
+        uid = UUID(project_id)
+    except ValueError:
+        return _render_project_error(request, 404, current_user)
+    db = SessionLocal()
+    try:
+        project = get_project(db, uid)
+        if not project:
+            return _render_project_error(request, 404, current_user)
+        project_mode = getattr(project, "mode", None)
+        if project_mode is not None and hasattr(project_mode, "value"):
+            project_mode = project_mode.value
+        if project_mode is None:
+            project_mode = "rule_based"
+        title = project.title or _project_title_by_type(type)
+        video_url = _project_video_url(type, project_id, project.output_path)
+        thumb_url = _project_media_thumb_url(project_id, getattr(project, "media_files", None))
+    finally:
+        db.close()
+    ctx = {
+        "request": request,
+        "project_id": project_id,
+        "project_title": title,
+        "current_url": request.url.path,
+        "project_type": type,
+        "mode": "share",
+        "project_mode": project_mode,
+        "current_user": current_user,
+        "share_url": _absolute_url(request, f"/share/{type}/{project_id}"),
+        "kakao_js_key": os.getenv("KAKAO_JS_KEY", "").strip(),
+        "share_meta": _build_share_meta(request, project_id, type, title, project_mode, thumb_url),
+    }
+    if type == "video":
+        ctx["video_url"] = video_url
     template = "viewer.html" if type == "video" else "viewer_album.html"
     return templates.TemplateResponse(template, ctx)
 

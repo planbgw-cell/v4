@@ -65,12 +65,18 @@
     </div>
   </main>
 </div>
+{% include "partials/share_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+{% if kakao_js_key %}
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
+{% endif %}
 <script src="/static/js/album-viewer-init.js"></script>
+<script src="/static/js/sharing_module.js"></script>
 <script>
 (function () {
   var emptyStateHtml = '<div class="text-center text-gray-500 max-w-sm"><p class="text-6xl mb-4" aria-hidden="true">📭</p><p class="text-lg font-medium text-gray-600">아직 저장된 프로젝트가 없습니다</p><p class="text-sm mt-2">새 앨범이나 영상을 만들면 여기에 표시됩니다.</p></div>';
@@ -91,6 +97,11 @@
       } else if (!hasFlipbookRoot) {
         console.warn("[Album] Skip init: flipbookRoot=" + hasFlipbookRoot + ", initAlbumViewer=" + hasInit);
       }
+      if (window.FlairySharing && window.FlairySharing.init) {
+        window.FlairySharing.init({
+          kakaoJsKey: "{{ kakao_js_key or '' }}"
+        });
+      }
     }
     var container = document.getElementById("mypage-list-container");
     if (!container) return;
@@ -104,6 +115,12 @@
       }
     }
   });
+
+  if (window.FlairySharing && window.FlairySharing.init) {
+    window.FlairySharing.init({
+      kakaoJsKey: "{{ kakao_js_key or '' }}"
+    });
+  }
 
   document.getElementById("mypage-list-container") && document.getElementById("mypage-list-container").addEventListener("click", function (ev) {
     var btn = ev.target.closest(".delete-project-btn");
