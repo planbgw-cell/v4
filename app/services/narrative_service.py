@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types as genai_types
 except ImportError:
     genai = None  # type: ignore[misc, assignment]
+    genai_types = None  # type: ignore[misc, assignment]
 
 GEMINI_MODEL = "gemini-2.5-flash"
 MAX_RETRIES = 3
@@ -34,30 +36,30 @@ Descriptions:
 """
 
 
-def _get_model():
-    if genai is None:
-        raise ValueError("google-generativeai 패키지가 필요합니다. pip install google-generativeai")
+def _get_client():
+    if genai is None or genai_types is None:
+        raise ValueError("google-genai 패키지가 필요합니다. pip install google-genai")
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(
-        GEMINI_MODEL,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.7,
-            max_output_tokens=1024,
-        ),
-    )
+    return genai.Client(api_key=api_key)
 
 
 def _call_gemini_text(prompt: str) -> str:
     """텍스트만으로 Gemini 호출. 재시도·fallback."""
-    model = _get_model()
+    client = _get_client()
     last_err = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = model.generate_content(prompt)
-            if response and response.text:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    temperature=0.7,
+                    max_output_tokens=1024,
+                ),
+            )
+            if response and getattr(response, "text", None):
                 return (response.text or "").strip()
         except Exception as e:
             last_err = e

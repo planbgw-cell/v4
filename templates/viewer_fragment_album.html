@@ -1,16 +1,12 @@
 {# HX-Request 시 반환: base 상속 없이 앨범 뷰어 콘텐츠만 (스타일 포함). initAlbumViewer는 마이페이지에서 호출. #}
 {% include "partials/_viewer_styles.html" %}
 {% include "partials/_viewer_album_styles.html" %}
-<div class="album-viewer-page" id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}">
-  <h1 class="text-lg font-semibold text-gray-800 text-center truncate album-viewer-title">Digital Album — {{ project_title }}</h1>
+{# 영상 조각(viewer_fragment_video)과 동일: max-w + mx-auto + 세로 스택 중앙. 마이페이지 우측 패널 가로 중심 유지 #}
+<div class="album-viewer-page w-full max-w-[min(900px,95vw)] mx-auto px-4 py-6 flex flex-col items-center" id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}">
+  <h1 class="text-lg font-semibold text-gray-800 text-center truncate album-viewer-title w-full mb-4"></h1>
 
-  <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
-    <div id="loadingState" class="text-center py-16 text-gray-500">
-      앨범을 불러오는 중...
-    </div>
-    <div id="errorState" class="text-center py-16 text-red-600 hidden">
-      앨범을 불러올 수 없습니다.
-    </div>
+  <div id="flipbookRoot" class="flipbook-wrap w-full" style="width: 100%; max-width: min(900px, 95vw);">
+
     <div id="flipbookState" class="hidden album-viewer-layout">
       <div class="album-top-section">
         <div class="flipbook-inner">

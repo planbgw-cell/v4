@@ -67,6 +67,9 @@ def on_startup():
     ensure_ai_progress_columns()
     ensure_project_type_column()
     ensure_user_id_column()
+    for route in app.routes:
+        print(f"[Route Check] Path: {route.path}")
+        logger.info("[Route Check] Path: %s", route.path)
 
 
 app.include_router(auth_router.router)

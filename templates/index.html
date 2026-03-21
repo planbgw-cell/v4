@@ -6,6 +6,16 @@
   {% include "partials/header.html" %}
   <div class="mb-8"></div>
 
+  <style>
+    /* UX: 결과물 실행 버튼(쌍둥이 버튼) 클릭 피드백 */
+    .btn-active {
+      background: #4f46e5 !important; /* indigo-600 */
+      border-color: #4f46e5 !important;
+      color: #ffffff !important;
+      transform: scale(0.95);
+    }
+  </style>
+
   <!-- Album title + File select -->
   <section class="mb-6">
     <div class="flex items-center gap-3 flex-wrap">
@@ -53,41 +63,61 @@
     </ul>
   </section>
 
-  <!-- Mode: AI 적용 방식 / Rule-Based -->
-  <section class="flex gap-2 mb-6">
-    <button
-      type="button"
-      data-mode="ai"
-      class="mode-btn px-5 py-2.5 rounded-lg border-2 font-medium transition-colors bg-indigo-600 text-white border-indigo-600"
-    >
-      AI 적용 방식
-    </button>
-    <button
-      type="button"
-      data-mode="rule_based"
-      class="mode-btn px-5 py-2.5 rounded-lg border-2 border-gray-300 font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-    >
-      Rule-Based
-    </button>
-  </section>
+  <!-- Mode: AI 적용 방식 / Rule-Based (Segmented Control) -->
+  <div class="flex p-1 bg-slate-100 rounded-xl w-full max-w-sm mx-auto mb-6">
+    <label class="flex-1 cursor-pointer">
+      <input
+        type="radio"
+        name="gen_mode"
+        id="genModeAI"
+        value="ai"
+        class="sr-only peer"
+        checked
+      />
+      <div
+        class="py-2 text-sm font-semibold text-center rounded-lg transition-all peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm text-slate-500 hover:text-slate-700"
+      >
+        AI 적용
+      </div>
+    </label>
+
+    <label class="flex-1 cursor-pointer">
+      <input
+        type="radio"
+        name="gen_mode"
+        id="genModeRule"
+        value="rule_based"
+        class="sr-only peer"
+      />
+      <div
+        class="py-2 text-sm font-semibold text-center rounded-lg transition-all peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm text-slate-500 hover:text-slate-700"
+      >
+        BASIC 적용
+      </div>
+    </label>
+  </div>
 
   <!-- Bottom action buttons -->
-  <section class="flex gap-4 mb-4">
+  <div class="flex gap-4 w-full max-w-md mx-auto mb-8">
     <button
       type="button"
-      id="btnHighlight"
-      class="flex-1 py-3 px-6 rounded-lg border-2 border-gray-300 font-medium hover:bg-gray-50 transition-colors"
+      id="btnGenVideo"
+      class="flex-1 py-4 px-6 rounded-2xl border-2 border-slate-200 font-bold transition-all
+             hover:border-indigo-400 hover:bg-indigo-50 active:scale-95
+             text-slate-700 bg-white"
     >
-      하이라이트 영상 만들기
+      🎬 하이라이트 영상 만들기
     </button>
     <button
       type="button"
-      id="btnAlbum"
-      class="flex-1 py-3 px-6 rounded-lg border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-medium hover:bg-indigo-100 transition-colors"
+      id="btnGenAlbum"
+      class="flex-1 py-4 px-6 rounded-2xl border-2 border-slate-200 font-bold transition-all
+             hover:border-indigo-400 hover:bg-indigo-50 active:scale-95
+             text-slate-700 bg-white"
     >
-      디지털 앨범 만들기
+      📖 디지털 앨범 만들기
     </button>
-  </section>
+  </div>
 
   <!-- Debug mode -->
   <label class="flex items-center gap-2 text-sm text-gray-600">
@@ -237,7 +267,7 @@
   const thumbnailList = document.getElementById('thumbnailList');
   const counterTotal = document.getElementById('counterTotal');
   const counterVideo = document.getElementById('counterVideo');
-  const modeBtns = document.querySelectorAll('.mode-btn');
+  const modeRadios = document.querySelectorAll('input[name="gen_mode"]');
 
   function formatSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -454,17 +484,10 @@
     fileInput.value = '';
   });
 
-  modeBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      mode = btn.dataset.mode;
-      modeBtns.forEach((b) => {
-        const on = b.dataset.mode === mode;
-        b.classList.toggle('bg-indigo-600', on);
-        b.classList.toggle('text-white', on);
-        b.classList.toggle('border-indigo-600', on);
-        b.classList.toggle('border-gray-300', !on);
-        b.classList.toggle('text-gray-600', !on);
-      });
+  modeRadios.forEach((r) => {
+    r.addEventListener('change', () => {
+      const checked = document.querySelector('input[name="gen_mode"]:checked');
+      mode = checked ? checked.value : 'ai';
     });
   });
 
@@ -568,10 +591,10 @@
   function submitCreate(actionType) {
     if (!validateForSubmit()) return;
     const title = (albumTitle.value || '').trim() || '제목 없음';
-    const btnHighlight = document.getElementById('btnHighlight');
-    const btnAlbum = document.getElementById('btnAlbum');
-    btnHighlight.disabled = true;
-    btnAlbum.disabled = true;
+    const btnVideo = document.getElementById('btnGenVideo');
+    const btnAlbumBtn = document.getElementById('btnGenAlbum');
+    if (btnVideo) btnVideo.disabled = true;
+    if (btnAlbumBtn) btnAlbumBtn.disabled = true;
 
     resetUploadUI();
     if (sortableInstance) {
@@ -598,8 +621,9 @@
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
-      btnHighlight.disabled = false;
-      btnAlbum.disabled = false;
+      if (btnVideo) btnVideo.disabled = false;
+      if (btnAlbumBtn) btnAlbumBtn.disabled = false;
+      if (typeof restoreButtonsText === "function") restoreButtonsText();
 
       if (xhr.status >= 200 && xhr.status < 300) {
         let data;
@@ -640,16 +664,70 @@
     };
 
     xhr.onerror = function () {
-      btnHighlight.disabled = false;
-      btnAlbum.disabled = false;
+      if (btnVideo) btnVideo.disabled = false;
+      if (btnAlbumBtn) btnAlbumBtn.disabled = false;
+      if (typeof restoreButtonsText === "function") restoreButtonsText();
       markAllError('업로드 중 네트워크 오류가 발생했습니다.');
     };
 
     xhr.send(formData);
   }
 
-  document.getElementById('btnHighlight').addEventListener('click', () => submitCreate('highlight'));
-  document.getElementById('btnAlbum').addEventListener('click', () => submitCreate('album'));
+  const btnGenVideo = document.getElementById('btnGenVideo');
+  const btnGenAlbum = document.getElementById('btnGenAlbum');
+
+  function setButtonsIdle() {
+    [btnGenVideo, btnGenAlbum].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.remove('btn-active');
+      btn.classList.remove('opacity-50');
+    });
+  }
+
+  function setActiveButton(targetBtn) {
+    if (!targetBtn) return;
+    [btnGenVideo, btnGenAlbum].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.remove('btn-active');
+      btn.classList.remove('opacity-50');
+    });
+    targetBtn.classList.add('btn-active');
+    const other = targetBtn === btnGenVideo ? btnGenAlbum : btnGenVideo;
+    if (other) other.classList.add('opacity-50');
+  }
+
+  function setLoadingButton(targetBtn) {
+    if (!targetBtn) return;
+    if (!targetBtn.dataset.originalText) targetBtn.dataset.originalText = targetBtn.textContent.trim();
+    targetBtn.disabled = true;
+    targetBtn.innerHTML =
+      '<span class="inline-flex items-center gap-2 justify-center">' +
+      '<span class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>' +
+      '생성 중...' +
+      '</span>';
+  }
+
+  function restoreButtonsText() {
+    [btnGenVideo, btnGenAlbum].forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = false;
+      setButtonsIdle();
+      if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
+    });
+  }
+
+  function onClickGenerate(actionType) {
+    const targetBtn = actionType === 'highlight' ? btnGenVideo : btnGenAlbum;
+    // 검증 실패 시에는 로딩/활성 피드백을 먼저 주지 않음
+    // (버튼이 disabled 상태로 "갇히는" UX 이슈 방지)
+    if (typeof validateForSubmit === "function" && !validateForSubmit()) return;
+    setActiveButton(targetBtn);
+    setLoadingButton(targetBtn);
+    submitCreate(actionType);
+  }
+
+  btnGenVideo && btnGenVideo.addEventListener('click', function () { onClickGenerate('highlight'); });
+  btnGenAlbum && btnGenAlbum.addEventListener('click', function () { onClickGenerate('album'); });
 })();
 </script>
 {% endblock %}

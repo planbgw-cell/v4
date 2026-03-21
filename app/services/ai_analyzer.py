@@ -2,8 +2,6 @@
 AI 미디어 분석기. 전처리 → Gemini 2.5 Flash 분석 → 구조화된 JSON 반환.
 render_rule_based 등 기존 엔진 로직을 참조하지 않으며, 미디어 읽기·분석·결과 반환만 담당.
 """
-import base64
-import io
 import json
 import logging
 import os
@@ -20,9 +18,11 @@ logger = logging.getLogger(__name__)
 UPRIGHT_JPEG_QUALITY = 95
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types as genai_types
 except ImportError:
     genai = None  # type: ignore[misc, assignment]
+    genai_types = None  # type: ignore[misc, assignment]
 
 try:
     from PIL import Image
@@ -32,7 +32,6 @@ except ImportError:
 # Gemini 2.5 Flash (안정 버전)
 GEMINI_MODEL = "gemini-2.5-flash"
 LONG_EDGE_MAX = 1024
-JPEG_QUALITY = 85
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SEC = 2.0
 
@@ -98,24 +97,15 @@ class FlairyAIAnalyzer:
         self._api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self._api_key:
             raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
-        if genai is None:
-            raise ValueError("google-generativeai 패키지가 필요합니다. pip install google-generativeai")
-        genai.configure(api_key=self._api_key)
-        self._model = genai.GenerativeModel(
-            GEMINI_MODEL,
+        if genai is None or genai_types is None:
+            raise ValueError("google-genai 패키지가 필요합니다. pip install google-genai")
+        self._client = genai.Client(api_key=self._api_key)
+        self._gen_config = genai_types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=1024,
-            ),
+            temperature=0.2,
+            max_output_tokens=1024,
         )
         self._preprocessor = ImagePreprocessor(long_edge_max=LONG_EDGE_MAX)
-
-    def _encode_image(self, pil_image: "Image.Image") -> str:
-        """PIL 이미지를 JPEG bytes → base64 문자열."""
-        buf = io.BytesIO()
-        pil_image.save(buf, format="JPEG", quality=JPEG_QUALITY)
-        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
         """응답 텍스트에서 JSON만 추출해 파싱. 필수 키 보정 및 subject_box 로그."""
@@ -230,14 +220,16 @@ class FlairyAIAnalyzer:
             path.name, raw_w, raw_h, exif_tag, processed_w, processed_h,
         )
 
-        b64_data = self._encode_image(img)
-        image_part = {"inline_data": {"mime_type": "image/jpeg", "data": b64_data}}
         last_exc: Exception | None = None
 
         for attempt in range(MAX_RETRIES):
             try:
-                response = self._model.generate_content([image_part, USER_PROMPT])
-                text = (response.text or "").strip()
+                response = self._client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=[img, USER_PROMPT],
+                    config=self._gen_config,
+                )
+                text = (getattr(response, "text", None) or "").strip()
                 result = self._parse_json_response(text)
                 result["width"] = w
                 result["height"] = h

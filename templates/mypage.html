@@ -3,10 +3,19 @@
 {% block head %}
 <style>
   .mypage-list-item-active { background-color: #eff6ff; border-color: #4f46e5; }
+  /* HTMX로 영상/앨범 로드 후: 우측 패널 가로·세로 중앙(영상 뷰어와 동일 축) */
   #viewer-display-area.viewer-content-loaded {
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+  /* 앨범 조각은 max-w-md가 없어 전폭으로 펼쳐져 왼쪽 정렬처럼 보임 → 영상과 같이 폭 제한 + 가운데 */
+  #viewer-display-area #viewerRoot.album-viewer-page {
+    width: 100%;
+    max-width: min(900px, 95vw);
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
   }
 </style>
 {% endblock %}

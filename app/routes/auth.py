@@ -1,6 +1,6 @@
 """
 이메일 로그인/회원가입 API. JWT는 HttpOnly 쿠키로 설정.
-구글·애플 OAuth2 소셜 로그인 포함.
+구글·카카오 OAuth2 소셜 로그인 포함.
 """
 import base64
 import json
@@ -17,16 +17,16 @@ from sqlalchemy.orm import Session
 
 from app.auth.config import (
     get_google_redirect_uri,
-    get_apple_redirect_uri,
+    get_kakao_redirect_uri,
     get_google_client_id,
-    get_apple_client_id,
+    get_kakao_client_id,
     google_oauth_configured,
-    apple_oauth_configured,
+    kakao_oauth_configured,
 )
 from app.auth.oauth_clients import (
     exchange_code_for_token,
     fetch_userinfo_google,
-    fetch_userinfo_apple,
+    fetch_userinfo_kakao,
 )
 from app.auth.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -109,7 +109,7 @@ def logout():
     return response
 
 
-# ---------- 소셜 로그인 (Google / Apple) ----------
+# ---------- 소셜 로그인 (Google / Kakao) ----------
 
 
 def _build_state(next_path: str | None) -> str:
@@ -185,50 +185,48 @@ async def google_callback(
     return response
 
 
-@router.get("/apple/login")
-async def apple_login(next_path: str | None = Query(None, alias="next")):
-    """애플 OAuth2 authorize URL로 리다이렉트."""
-    if not apple_oauth_configured():
-        raise HTTPException(status_code=503, detail="Apple OAuth not configured")
+@router.get("/kakao/login")
+async def kakao_login(next_path: str | None = Query(None, alias="next")):
+    """카카오 OAuth2 authorize URL로 리다이렉트."""
+    if not kakao_oauth_configured():
+        raise HTTPException(status_code=503, detail="Kakao OAuth not configured")
     state = _build_state(next_path)
+    # Kakao 콘솔 설정 필요:
+    # - 제품 설정 > 카카오 로그인 > 활성화 ON
+    # - Redirect URI: http://121.133.47.184:8000/api/auth/kakao/callback
     params = {
-        "response_type": "code id_token",
-        "response_mode": "query",
-        "client_id": get_apple_client_id(),
-        "redirect_uri": get_apple_redirect_uri(),
-        "scope": "name email",
+        "response_type": "code",
+        "client_id": get_kakao_client_id(),
+        "redirect_uri": get_kakao_redirect_uri(),
         "state": state,
     }
-    url = "https://appleid.apple.com/auth/authorize?" + urlencode(params)
+    url = "https://kauth.kakao.com/oauth/authorize?" + urlencode(params)
     return RedirectResponse(url=url, status_code=302)
 
 
-@router.get("/apple/callback")
-async def apple_callback(
+@router.get("/kakao/callback")
+async def kakao_callback(
     code: str | None = Query(None),
-    id_token: str | None = Query(None),
     state: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """애플 callback: code로 토큰 교환 후 id_token에서 이메일·sub 추출 → 유저 조회/생성 → JWT 쿠키 → 리다이렉트."""
-    if not code and not id_token:
-        raise HTTPException(status_code=400, detail="Missing code and id_token")
-    redirect_uri = get_apple_redirect_uri()
-    token_data = {}
-    if code:
-        token_data = await exchange_code_for_token("apple", code, redirect_uri)
-    id_token_raw = id_token or token_data.get("id_token")
-    if not id_token_raw:
-        raise HTTPException(status_code=400, detail="Apple id_token not available")
-    userinfo = await fetch_userinfo_apple(id_token_raw)
-    logger.info("Apple profile: %s", userinfo)
+    """카카오 callback: code로 토큰 교환 → userinfo → 유저 조회/생성 → JWT 쿠키 → 리다이렉트."""
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+    redirect_uri = get_kakao_redirect_uri()
+    token_data = await exchange_code_for_token("kakao", code, redirect_uri)
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Kakao did not return access_token")
+    userinfo = await fetch_userinfo_kakao(access_token)
+    logger.info("Kakao profile: %s", userinfo)
     email = (userinfo.get("email") or "").strip()
     if not email:
-        raise HTTPException(status_code=400, detail="Apple did not return email")
+        raise HTTPException(status_code=400, detail="Kakao did not return email")
     user = get_user_by_email(db, email)
     if not user:
-        user = create_user(db, email=email, hashed_password=None, provider="apple")
-    elif user.provider not in ("apple", "local"):
+        user = create_user(db, email=email, hashed_password=None, provider="kakao")
+    elif user.provider not in ("kakao", "local"):
         raise HTTPException(status_code=400, detail="이미 다른 소셜 계정으로 가입된 이메일입니다.")
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     next_path = _parse_state(state)

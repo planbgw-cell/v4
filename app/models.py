@@ -23,7 +23,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=True)  # 소셜 로그인 시 null
-    provider = Column(String(20), nullable=False, default="local")  # local | google | apple
+    provider = Column(String(20), nullable=False, default="local")  # local | google | kakao
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     projects = relationship("Project", back_populates="user")

@@ -1,5 +1,5 @@
 {% extends "layouts/base.html" %}
-{% block title %}Digital Album - {{ project_title }} - Flairy{% endblock %}
+{% block title %}{{ project_title }} - Flairy{% endblock %}
 {% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}
 {% block head %}
 {% if share_meta is defined %}
@@ -15,8 +15,8 @@
 {% include "partials/_viewer_styles.html" %}
 {% include "partials/_viewer_album_styles.html" %}
 {% if mode != 'mypage' %}{% include "partials/viewer_header.html" %}{% endif %}
-<main id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}" class="album-viewer-page pb-10 min-h-screen bg-[#F8FAFC]">
-  <div class="viewer-stage">
+<main id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" data-project-mode="{{ project_mode }}" class="album-viewer-page w-full flex flex-col items-center pb-10 min-h-screen bg-[#F8FAFC]">
+  <div class="viewer-stage w-full max-w-[min(900px,95vw)] mx-auto">
     <h1 class="text-lg font-semibold text-gray-800 text-center truncate album-viewer-title">Digital Album — {{ project_title }}</h1>
     <div class="content-album-wrapper">
       <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">

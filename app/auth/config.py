@@ -20,29 +20,24 @@ def get_google_redirect_uri() -> str:
     return os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()
 
 
-def get_apple_client_id() -> str:
-    return os.getenv("APPLE_CLIENT_ID", "").strip()
+def get_kakao_client_id() -> str:
+    return os.getenv("KAKAO_CLIENT_ID", "").strip()
 
 
-def get_apple_team_id() -> str:
-    return os.getenv("APPLE_TEAM_ID", "").strip()
+def get_kakao_client_secret() -> str:
+    return os.getenv("KAKAO_CLIENT_SECRET", "").strip()
 
 
-def get_apple_key_id() -> str:
-    return os.getenv("APPLE_KEY_ID", "").strip()
-
-
-def get_apple_private_key() -> str:
-    return os.getenv("APPLE_PRIVATE_KEY", "").strip()
-
-
-def get_apple_redirect_uri() -> str:
-    return os.getenv("APPLE_REDIRECT_URI", "http://localhost:8000/api/auth/apple/callback").strip()
+def get_kakao_redirect_uri() -> str:
+    # Kakao 콘솔 설정 필요:
+    # - 제품 설정 > 카카오 로그인 > 활성화 ON
+    # - Redirect URI: http://121.133.47.184:8000/api/auth/kakao/callback
+    return os.getenv("KAKAO_REDIRECT_URI", "http://localhost:8000/api/auth/kakao/callback").strip()
 
 
 def google_oauth_configured() -> bool:
     return bool(get_google_client_id() and get_google_client_secret())
 
 
-def apple_oauth_configured() -> bool:
-    return bool(get_apple_client_id() and get_apple_private_key())
+def kakao_oauth_configured() -> bool:
+    return bool(get_kakao_client_id() and get_kakao_client_secret())

@@ -101,11 +101,14 @@ window.initAlbumViewer = function () {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
     var blurPart = isVideo
-      ? '<video class="slot-blur-video" src="' + url + '" muted autoplay playsinline loop preload="auto" aria-hidden="true" tabindex="-1"></video>'
+      ? ""
       : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" />';
     var posStyle = objectPositionStyle(styles || {});
     var mediaPart = isVideo
-      ? '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="auto"></video>'
+      ? '<div class="slot-video-stack">' +
+        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
+        '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
+        "</div>"
       : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy"' + posStyle + " />";
     var captionPart = "";
     if (caption) {
@@ -134,12 +137,20 @@ window.initAlbumViewer = function () {
   function coverSlotHtml(mediaPath, fileType, title) {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
+    /* 앞표지만: 가로 이미지 시 상·하 검은 여백을 블러+확대 배경으로 채움 (내지 slotHtml과 별도) */
+    var blurPart = isVideo
+      ? ""
+      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" aria-hidden="true" />';
     var mediaPart = isVideo
-      ? '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="auto"></video>'
+      ? '<div class="slot-video-stack">' +
+        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
+        '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
+        "</div>"
       : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" />';
     var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(title || "") + "</div>";
     return (
-      '<div class="media-frame album-media-container">' +
+      '<div class="media-frame album-media-container cover-front">' +
+      blurPart +
       mediaPart +
       overlayPart +
       "</div>"
@@ -167,6 +178,76 @@ window.initAlbumViewer = function () {
     var meta = '<div class="cover-back-meta">Created on: ' + escapeHtml(createdDate) + '<br>Project ID: ' + escapeHtml(shortId) + '</div>';
     var brand = '<div class="cover-back-brand">Flairy v4.0<span class="copyright">© 2026 Flairy. All rights reserved.</span></div>';
     return '<div class="cover-back">' + '<div class="cover-back-spine-shadow" aria-hidden="true"></div>' + center + meta + brand + '</div>';
+  }
+
+  /**
+   * 가로 영상만: 재생 영상의 한 프레임을 캔버스로 그려 img.slot-blur-poster에 넣어 엠비언트 블러 배경으로 사용.
+   * (이중 video 블러는 디코딩 전 검은 화면이 자주 보여 정적 썸네일 방식으로 통일)
+   */
+  function captureVideoFrameToAmbientPoster(frame, video) {
+    var posterImg = frame.querySelector("img.slot-blur-poster");
+    if (!posterImg || !frame.classList.contains("is-landscape")) return;
+    var maxDim = 960;
+    function drawAndAssign() {
+      try {
+        var vw = video.videoWidth || 0;
+        var vh = video.videoHeight || 0;
+        if (!vw || !vh) return;
+        var scale = Math.min(1, maxDim / vw, maxDim / vh);
+        var cw = Math.max(1, Math.floor(vw * scale));
+        var ch = Math.max(1, Math.floor(vh * scale));
+        var canvas = document.createElement("canvas");
+        canvas.width = cw;
+        canvas.height = ch;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, cw, ch);
+        posterImg.src = canvas.toDataURL("image/jpeg", 0.82);
+        posterImg.classList.add("slot-blur-poster--ready");
+      } catch (err) {
+        console.warn("[Album] ambient poster capture failed (CORS/보안)", err);
+      }
+    }
+    var savedTime = video.currentTime;
+    var dur = video.duration;
+    var seekTo = 0.08;
+    if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
+      seekTo = Math.min(0.15, Math.max(0.04, dur * 0.02));
+    }
+    function afterSeek() {
+      drawAndAssign();
+      try {
+        video.currentTime = savedTime;
+      } catch (e) {}
+    }
+    function runSeek() {
+      try {
+        video.currentTime = seekTo;
+      } catch (e) {
+        drawAndAssign();
+        return;
+      }
+      video.addEventListener(
+        "seeked",
+        function onSeeked() {
+          video.removeEventListener("seeked", onSeeked);
+          afterSeek();
+        },
+        { once: true }
+      );
+    }
+    if (video.readyState >= 2) {
+      runSeek();
+    } else {
+      video.addEventListener(
+        "loadeddata",
+        function onLd() {
+          video.removeEventListener("loadeddata", onLd);
+          runSeek();
+        },
+        { once: true }
+      );
+    }
   }
 
   function setupVideoInPage(container) {
@@ -198,15 +279,8 @@ window.initAlbumViewer = function () {
         if (!frame) return;
         frame.classList.toggle("is-portrait", h >= w);
         frame.classList.toggle("is-landscape", w > h);
-
-        // 가로(landscape) 영상만 상/하 블러(움직이는 배경) 재생
-        var blurV = frame.querySelector("video.slot-blur-video");
-        if (blurV) {
-          if (w > h) {
-            blurV.play().catch(function () {});
-          } else {
-            blurV.pause();
-          }
+        if (w > h) {
+          captureVideoFrameToAmbientPoster(frame, video);
         }
       }, { once: true });
 
@@ -215,14 +289,10 @@ window.initAlbumViewer = function () {
           function (entries) {
             entries.forEach(function (entry) {
               var v = entry.target;
-              var frame = v.closest(".media-frame");
-              var blurV = frame ? frame.querySelector("video.slot-blur-video") : null;
               if (entry.isIntersecting) {
                 v.play().catch(function () {});
-                if (blurV && !(frame && frame.classList.contains("is-portrait"))) blurV.play().catch(function () {});
               } else {
                 v.pause();
-                if (blurV) blurV.pause();
               }
             });
           },

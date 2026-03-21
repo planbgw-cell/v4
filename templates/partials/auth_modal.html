@@ -30,8 +30,13 @@
           <a href="/api/auth/google/login?next={{ current_url | default('/', true) }}" id="authModalGoogle" class="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50">
             Google로 로그인
           </a>
-          <a href="/api/auth/apple/login?next={{ current_url | default('/', true) }}" id="authModalApple" class="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-black px-4 py-2 text-white hover:bg-gray-800">
-            Apple로 로그인
+          <a
+            href="/api/auth/kakao/login?next={{ current_url | default('/', true) }}"
+            id="authModalKakao"
+            class="w-full flex items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 py-3 font-bold text-black transition-all hover:bg-[#FADA00]"
+          >
+            <img src="https://developers.kakao.com/assets/img/about/logos/kakaolink/kakaolink_btn_small.png" alt="" class="h-5 w-5" />
+            카카오로 로그인
           </a>
         </div>
       </div>
