@@ -30,9 +30,18 @@ def _check_heic_deps() -> None:
             "HEIC EXIF를 쓰려면 pillow-heif, piexif 설치 필요: pip install pillow-heif piexif"
         )
 
-from app.crud import get_media_files_by_project, get_project, update_project_status
+from app.crud import (
+    get_media_files_by_project,
+    get_project,
+    update_project_ai_narrative_order,
+    update_project_status,
+)
 from app.database import ensure_logs_column, SessionLocal
 from app.models import MediaFile, Project
+from app.services.narrative_service import (
+    generate_highlight_narrative_scores,
+    reorder_by_ai_scores,
+)
 from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
 from app.utils.path_manager import (
     CINEMATIC_FONT_PRIMARY,
@@ -50,11 +59,50 @@ logger = logging.getLogger(__name__)
 # 시네마틱 투명 자막 (Google Photos 스타일): 검은 바 없음, 플로팅 텍스트, 9:16 기준
 CINEMATIC_FONT_SIZE = 60
 CINEMATIC_FLOAT_Y_OFFSET = 150  # y=h-th-150
-# 영문 감성 자막: 플레이어 하단 15% (1920*0.15=288), 타이프라이터 스타일
-ENGLISH_CAPTION_FONT_SIZE = 42
-ENGLISH_CAPTION_Y_OFFSET = 288  # 하단 15%, y=h-th-288
+# 영문 감성 자막: 플레이어 하단 ~15% (1080x1920 기준), 타이프라이터 ASS (use_ai 경로만)
+ENGLISH_CAPTION_FONT_SIZE = 80
+ENGLISH_CAPTION_Y_OFFSET = 260  # 큰 글자에 맞춰 약간 상향
 ENGLISH_CAPTION_TYPEWRITER_CHARS_MAX = 30  # 타이프라이터 drawtext 체인 글자 수 상한
 SUBTITLE_RATIO = 0.45  # 전체 클립 중 자막 노출 비율 (40~50%)
+
+
+def _ai_subtitle_indices_along_narrative(
+    main_media_list: list[MediaFile],
+    n_subs: int,
+) -> set[int]:
+    """
+    AI 하이라이트 전용(호출부에서 use_ai=True일 때만 사용).
+    서사 순서가 반영된 main_media_list 타임라인을 n_subs개 구간으로 나누고,
+    각 구간에서 ai_analysis score가 가장 높은 인덱스를 고른다.
+    rule_based 경로는 이 함수를 호출하지 않는다.
+    """
+    n = len(main_media_list)
+    if n_subs <= 0 or n == 0:
+        return set()
+    if n_subs >= n:
+        return set(range(n))
+
+    def score_at(i: int) -> float:
+        a = main_media_list[i].ai_analysis or {}
+        s = a.get("score")
+        return float(s) if isinstance(s, (int, float)) else 0.0
+
+    selected: set[int] = set()
+    for k in range(n_subs):
+        start = (k * n) // n_subs
+        end = ((k + 1) * n) // n_subs
+        if end <= start:
+            end = min(start + 1, n)
+        best_i = start
+        best_s = score_at(start)
+        for i in range(start, min(end, n)):
+            s = score_at(i)
+            if s > best_s:
+                best_s = s
+                best_i = i
+        selected.add(best_i)
+    return selected
+
 
 # 9:16 FHD 세로 (1080x1920), xfade 호환을 위해 모든 클립 30fps CFR 강제
 CANVAS_W = 1080
@@ -132,8 +180,8 @@ def get_video_encoding_args() -> list[str]:
 
 def _write_typewriter_ass(text: str, out_path: Path, duration_sec: float = 3.0) -> None:
     """
-    타이프라이터 효과 ASS 자막 파일 생성. 1/15초(약 67ms)당 한 글자 노출(\\kf).
-    Phase 4-B: Special Elite 42pt, #F9F9F9, 하단 15%(MarginV=288), Shadow=2.
+    타이프라이터 효과 ASS 자막 (use_ai 클립만). 1080x1920 PlayRes, Noto Sans KR Bold 스타일.
+    \\kf: 자막 단위 centisecond. 클립 길이 안에 타입라이터 + 최소 1초 완성 문장 유지를 위해 kf 자동 축소.
     """
     raw = (text or "").strip()[:ENGLISH_CAPTION_TYPEWRITER_CHARS_MAX]
     if not raw:
@@ -148,18 +196,36 @@ def _write_typewriter_ass(text: str, out_path: Path, duration_sec: float = 3.0) 
             return "}}"
         return c
 
-    typewriter_body = "".join("{\\kf67}" + _ass_escape(c) for c in raw)
-    end_sec = max(duration_sec, len(raw) / 15.0 + 0.5)
+    n = len(raw)
+    hold_sec = 1.0
+    # 목표: \kf35(0.35s/글)보다 빠르게 필요하면 클립 길이에 맞춤 (남은 시간에 완성+1초)
+    tw_budget = max(0.25, duration_sec - hold_sec)
+    kf_cs = 35
+    if n > 0 and n * (kf_cs / 100.0) > tw_budget:
+        kf_cs = max(4, int(tw_budget * 100.0 / n))
+
+    typewriter_body = "".join("{\\kf" + str(kf_cs) + "}" + _ass_escape(c) for c in raw)
+    end_sec = duration_sec
     h = int(end_sec // 3600)
     m = int((end_sec % 3600) // 60)
     s = end_sec % 60
     end_str = f"{h}:{m:02d}:{s:05.2f}"
 
-    script_info = "[Script Info]\nTitle: Flairy Typewriter\nScriptType: v4.00+\n\n"
+    # Outline=3, Shadow=2, MarginV: 하단 여백 (큰 폰트)
+    margin_v = 240
+    script_info = (
+        "[Script Info]\n"
+        "Title: Flairy Typewriter\n"
+        "ScriptType: v4.00+\n"
+        "PlayResX: 1080\n"
+        "PlayResY: 1920\n"
+        "\n"
+    )
     styles = (
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Default,Special Elite,42,&H00F9F9F9,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,0,2,2,10,10,288,1\n\n"
+        "Style: Default,Noto Sans KR,80,&H00F9F9F9,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,10,10,"
+        f"{margin_v},1\n\n"
     )
     events = (
         "[Events]\n"
@@ -584,7 +650,7 @@ class FlairyVideoEngine:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=180,
             )
             if result.returncode != 0:
                 logger.error("FFmpeg stderr: %s", result.stderr)
@@ -599,7 +665,7 @@ class FlairyVideoEngine:
             return out_path
         except subprocess.TimeoutExpired as e:
             logger.exception("FFmpeg 타임아웃: %s", e)
-            self._append_log("FFmpeg 타임아웃 (60초)")
+            self._append_log("FFmpeg 타임아웃 (이미지 클립 180초 한도)")
             raise
         except FileNotFoundError:
             logger.exception("FFmpeg를 찾을 수 없습니다. 설치 여부를 확인하세요.")
@@ -625,15 +691,32 @@ class FlairyVideoEngine:
         self._append_log(f"동영상 클립 정규화 시작: {media_file.file_path}")
         out_path = self.temp_dir / f"clip_{index:04d}.mp4"
 
+        src_d = self._get_video_duration_sec(input_path)
+        if src_d is None or src_d <= 0:
+            src_d = float(CLIP_DURATION_SEC)
+        clip_dur = min(float(CLIP_DURATION_SEC), max(0.04, float(src_d)))
+        sub_dur = min(clip_dur, float(CLIP_DURATION_SEC))
+
         vf = self._build_916_vf(input_path, media_file=media_file, use_ai=use_ai)
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
             vf = vf[:-5]
             if subtitle_text:
                 ass_path = self.temp_dir / f"sub_caption_{index:04d}.ass"
-                _write_typewriter_ass(subtitle_text, ass_path, CLIP_DURATION_SEC)
+                _write_typewriter_ass(subtitle_text, ass_path, sub_dur)
                 vf += "," + self._build_subtitles_filter(ass_path)
-            vf += VF_CFR_VIDEO + "[vid]"
+            # 영상·오디오 동일 길이: trim/atrim 후 CFR (이미지 클립과 동일 max 길이)
+            vf += (
+                f",trim=start=0:duration={clip_dur:.3f},setpts=PTS-STARTPTS"
+                + VF_CFR_VIDEO
+                + "[vid]"
+            )
+        # 오디오: 길이 고정 → loudnorm → 다시 동일 길이로 자름 (싱크 유지)
+        af = (
+            f"atrim=start=0:duration={clip_dur:.3f},asetpts=PTS-STARTPTS,"
+            f"loudnorm=I=-16:TP=-1.5:LRA=11,"
+            f"atrim=start=0:duration={clip_dur:.3f},asetpts=PTS-STARTPTS"
+        )
         cmd = [
             "ffmpeg",
             "-y",
@@ -643,6 +726,11 @@ class FlairyVideoEngine:
             str(input_path),
             "-vf",
             vf,
+            "-af",
+            af,
+            "-t",
+            f"{clip_dur:.3f}",
+            "-shortest",
             "-r",
             str(CLIP_FPS),
             *get_video_encoding_args(),
@@ -654,11 +742,14 @@ class FlairyVideoEngine:
             "44100",
             "-ac",
             "2",
-            "-af",
-            "loudnorm",
             str(out_path),
         ]
-        logger.info("동영상 클립 정규화: %s", " ".join(cmd))
+        logger.info(
+            "동영상 클립 정규화 (dur=%.3fs src=%.3fs): %s",
+            clip_dur,
+            src_d,
+            " ".join(cmd),
+        )
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             logger.error("FFmpeg video stderr: %s", result.stderr)
@@ -747,19 +838,33 @@ class FlairyVideoEngine:
         for i in range(n - 1):
             s += durations[i] - fade_durations[i]
             offsets.append(s)
-        prev = "[v0]"
-        for i in range(1, n):
-            fd = fade_durations[i - 1]
-            trans = transitions[i - 1]
-            out_label = f"[vout]" if i == n - 1 else f"[vx{i}]"
-            parts.append(f"{prev}[v{i}]xfade=transition={trans}:duration={fd:.3f}:offset={offsets[i-1]:.3f}{out_label}")
-            prev = out_label
-        video_filter = ";".join(parts)
+        if n == 1:
+            video_filter = parts[0].replace("[v0]", "[vout]")
+        else:
+            prev = "[v0]"
+            for i in range(1, n):
+                fd = fade_durations[i - 1]
+                trans = transitions[i - 1]
+                out_label = f"[vout]" if i == n - 1 else f"[vx{i}]"
+                parts.append(
+                    f"{prev}[v{i}]xfade=transition={trans}:duration={fd:.3f}:offset={offsets[i-1]:.3f}{out_label}"
+                )
+                prev = out_label
+            video_filter = ";".join(parts)
 
-        # Audio: concat
+        # 오디오: concat 제거 → acrossfade로 영상 xfade와 동일한 겹침 길이 (전환 후 이전 클립 소리 잔류 방지)
         a_parts = [f"[{i}:a]atrim=0:{durations[i]:.3f},asetpts=PTS-STARTPTS[a{i}]" for i in range(n)]
-        a_chain = "".join([f"[a{i}]" for i in range(n)]) + f"concat=n={n}:v=0:a=1[aout]"
-        audio_filter = ";".join(a_parts) + ";" + a_chain
+        if n == 1:
+            audio_filter = a_parts[0].replace("[a0]", "[aout]")
+        else:
+            a_x = []
+            prev_a = "[a0]"
+            for i in range(1, n):
+                fd = fade_durations[i - 1]
+                lbl = "[aout]" if i == n - 1 else f"[aax{i}]"
+                a_x.append(f"{prev_a}[a{i}]acrossfade=d={fd:.3f}:c1=tri:c2=tri{lbl}")
+                prev_a = lbl
+            audio_filter = ";".join(a_parts) + ";" + ";".join(a_x)
 
         filter_complex = video_filter + ";" + audio_filter
         cmd = ["ffmpeg", "-y"]
@@ -779,8 +884,23 @@ class FlairyVideoEngine:
             raise RuntimeError(f"xfade 병합 실패: {result.stderr or result.stdout}")
         if not merged_path.is_file():
             raise RuntimeError(f"병합 파일 미생성: {merged_path}")
-        logger.info("클립 병합 완료 (xfade): %s", merged_path)
-        self._append_log("클립 병합 완료")
+        merged_d = self._get_video_duration_sec(merged_path)
+        sum_d = sum(durations)
+        sum_fade = sum(fade_durations)
+        expected_len = sum_d - sum_fade if n > 1 else sum_d
+        logger.info(
+            "클립 병합 완료 (xfade): %s | 타임라인 검증 merged=%.3fs expected≈%.3fs "
+            "(sum_clips=%.3fs sum_fades=%.3fs n=%d, 오디오=acrossfade)",
+            merged_path,
+            merged_d,
+            expected_len,
+            sum_d,
+            sum_fade,
+            n,
+        )
+        self._append_log(
+            f"클립 병합 완료 (출력 길이 약 {merged_d:.2f}s, 영·오디오 acrossfade/xfade 정렬)"
+        )
         return merged_path
 
     def _merge_clips(self, clip_paths: list[Path]) -> Path:
@@ -845,7 +965,7 @@ class FlairyVideoEngine:
                 "-pix_fmt", "yuv420p", "-c:a", "aac",
                 "-shortest", str(out_path),
             ]
-            r2 = subprocess.run(encode, capture_output=True, text=True, timeout=60)
+            r2 = subprocess.run(encode, capture_output=True, text=True, timeout=180)
             if r2.returncode != 0 or not out_path.is_file():
                 raise RuntimeError(f"정적 클립 인코딩 실패: {r2.stderr or r2.stdout}")
             return out_path
@@ -904,7 +1024,8 @@ class FlairyVideoEngine:
         font_opt = self._get_english_caption_fontfile_opt()
         return (
             f"drawtext=text='{label}':{font_opt}fontsize={ENGLISH_CAPTION_FONT_SIZE}:"
-            f"fontcolor=0xF9F9F9:shadowcolor=black@0.4:shadowx=2:shadowy=2:"
+            f"fontcolor=0xF9F9F9:borderw=3:bordercolor=black@0.85:"
+            f"shadowcolor=black@0.4:shadowx=2:shadowy=2:"
             f"x=(w-tw)/2:y=h-th-{ENGLISH_CAPTION_Y_OFFSET}"
         )
 
@@ -995,6 +1116,61 @@ class FlairyVideoEngine:
         except Exception as e:
             logger.warning("임시 폴더 삭제 실패(무시): %s", e)
 
+    def _order_media_for_narrative(
+        self,
+        media_files: list[MediaFile],
+        saved_raw: list | dict | None,
+    ) -> list[MediaFile]:
+        """AI 하이라이트: DB 서사 가중치(dict) 또는 구버전 순서(list)·Gemini 스코어로 본편 정렬. 실패 시 order_index."""
+        if not media_files:
+            return media_files
+        id_set = {m.id for m in media_files}
+        by_id = {m.id: m for m in media_files}
+
+        # 구버전: id 순서 리스트
+        if isinstance(saved_raw, list) and saved_raw:
+            try:
+                coerced = [int(x) for x in saved_raw]
+                if set(coerced) == id_set and len(coerced) == len(id_set):
+                    logger.info("Using DB ai_narrative_order (legacy id list): %s", coerced)
+                    return [by_id[i] for i in coerced]
+            except (TypeError, ValueError):
+                pass
+
+        # 신규: {"965": 9.2, ...} narrative_weight
+        if isinstance(saved_raw, dict) and saved_raw:
+            scores: dict[str, float] = {}
+            for k, v in saved_raw.items():
+                try:
+                    sid = int(k)
+                    if sid not in id_set:
+                        continue
+                    scores[str(sid)] = max(0.0, min(10.0, float(v)))
+                except (TypeError, ValueError):
+                    continue
+            if scores:
+                merged = {str(mid): float(scores.get(str(mid), 0.0)) for mid in id_set}
+                ordered = reorder_by_ai_scores(media_files, merged)
+                logger.info("[AI Scoring] Using DB narrative weights: %s", merged)
+                return ordered
+
+        try:
+            scores = generate_highlight_narrative_scores(media_files)
+            if scores:
+                db = SessionLocal()
+                try:
+                    update_project_ai_narrative_order(db, self.project_id, scores)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Could not persist ai_narrative_order: %s", e)
+                finally:
+                    db.close()
+                return reorder_by_ai_scores(media_files, scores)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("narrative scoring failed: %s", e)
+
+        logger.info("Narrative order fallback: order_index")
+        return sorted(media_files, key=lambda m: m.order_index)
+
     def _run(self, use_ai: bool = False) -> Path | None:
         """
         표준 5단계 파이프라인: [1] 큐레이션 [2] 인트로 콜라주 1개 [3] 본편 클립 [4] 자막·BGM [5] 병합.
@@ -1006,6 +1182,10 @@ class FlairyVideoEngine:
             media_files = get_media_files_by_project(db, self.project_id)
             project = get_project(db, self.project_id)
             intro_title = (getattr(project, "title", None) or "").strip() or "Our Precious Memories"
+            raw_saved = getattr(project, "ai_narrative_order", None) if project else None
+            saved_narrative: list | dict | None = (
+                raw_saved if isinstance(raw_saved, (list, dict)) else None
+            )
         finally:
             db.close()
         # 1단계: 유니크 리스트만 사용 (video_service Curate에서 중복 90% 제거 후 is_selected=True만 남김)
@@ -1031,6 +1211,7 @@ class FlairyVideoEngine:
             return None
 
         if use_ai:
+            media_files = self._order_media_for_narrative(media_files, saved_narrative)
             logger.info("---------- STARTING AI RENDERING MODE (9:16) ----------")
 
         # 1+N 구조: 인트로 1개(score 상위 3~4장 콜라주) + 본편 N개(유니크 리스트 전체 각 1클립)
@@ -1061,9 +1242,12 @@ class FlairyVideoEngine:
             try:
                 intro_path = self.temp_dir / "collage_intro.mp4"
                 render_collage_clip(
-                    intro_group, self.base_dir, intro_path,
+                    intro_group,
+                    self.base_dir,
+                    intro_path,
                     summary_text=summary_intro or "함께한 순간",
                     title=intro_title,
+                    subtitle="A Wonderful Life: Highlights",
                 )
                 clips.append(intro_path)
                 intro_clip_path = intro_path
@@ -1072,17 +1256,19 @@ class FlairyVideoEngine:
                 logger.warning("인트로 콜라주 실패, 스킵: %s", e)
                 self._append_log(f"인트로 콜라주 실패: {e}")
 
-        # 자막 노출: 전체 클립의 약 40~50%만 영문 감성 자막 표시 (score 상위 우선)
+        # 자막 노출(AI만): 약 40~50% 클립에 영문 감성 자막.
+        # Step3: 서사 순서(재배열된 main_media_list)를 따라 구간별로 나눠 골고루 노출 + 구간 내에서는 score 우선.
+        # use_ai=False(rule_based)일 때는 subtitle_indices가 비어 있으며 기존과 동일.
         subtitle_indices: set[int] = set()
         if use_ai and main_media_list:
             n_subs = max(0, min(len(main_media_list), int(round(len(main_media_list) * SUBTITLE_RATIO))))
             if n_subs > 0:
-                sorted_by_score = sorted(
-                    range(len(main_media_list)),
-                    key=lambda i: float((main_media_list[i].ai_analysis or {}).get("score") or 0),
-                    reverse=True,
+                subtitle_indices = _ai_subtitle_indices_along_narrative(main_media_list, n_subs)
+                logger.info(
+                    "AI subtitle slots (narrative-spaced, n=%d): %s",
+                    n_subs,
+                    sorted(subtitle_indices),
                 )
-                subtitle_indices = set(sorted_by_score[:n_subs])
 
         # 본편 시퀀스: 전체 N장 각각 1클립 (선정된 클립에만 영문 자막 합성)
         for index, mf in enumerate(main_media_list):

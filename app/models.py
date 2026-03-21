@@ -47,6 +47,8 @@ class Project(Base):
     logs = Column(Text, nullable=True)
     ai_total_count = Column(Integer, default=0, nullable=False)
     ai_processed_count = Column(Integer, default=0, nullable=False)
+    # AI 하이라이트: 서사 가중치. JSONB dict[str, float] id→narrative_weight(0~10). 구버전 list[int] 순서만 허용(호환).
+    ai_narrative_order = Column(JSONB, nullable=True)
 
     user = relationship("User", back_populates="projects")
     media_files = relationship("MediaFile", back_populates="project", cascade="all, delete-orphan")

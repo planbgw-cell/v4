@@ -2,7 +2,9 @@
 앨범 감성 스토리텔링: Gemini 텍스트 전용 호출.
 - 앨범 영문 감성 타이틀 생성
 - description → 서정적 영문 자막(lyrical caption) 변환
+- 하이라이트: 미디어별 서사 가중치 narrative_weight (0~10) JSON 맵
 """
+import json
 import logging
 import os
 import re
@@ -28,6 +30,21 @@ Keep it under 60 characters.
 
 Descriptions:
 """
+HIGHLIGHT_NARRATIVE_SCORING_PROMPT = """You are a film editor scoring clips for a vertical 9:16 highlight video.
+Each item has: id (integer), type (image or video), emotion, summary (short scene description).
+
+For EACH item id, assign a single number narrative_weight from 0.0 to 10.0 meaning "how important this clip is
+for the overall story arc" (opening hook, emotional peaks, resolution moments score higher; filler lower).
+You may give similar scores to multiple items. Do not output ordering lists.
+
+Output ONLY one JSON object (no markdown fences), keys MUST be string decimal ids, values MUST be numbers:
+{"965": 9.2, "966": 7.1, ...}
+
+Include an entry for every id listed below. Keys must match these ids as strings.
+
+Items (JSON array):
+"""
+
 LYRICAL_CAPTION_PROMPT = """Convert each of the following short photo descriptions into a single short lyrical English caption for a photo album.
 One line per caption, poetic and evocative. Max 60 chars each.
 Reply with exactly one caption per line, in the same order. No numbering or bullets.
@@ -45,7 +62,7 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 
-def _call_gemini_text(prompt: str) -> str:
+def _call_gemini_text(prompt: str, *, max_output_tokens: int = 1024) -> str:
     """텍스트만으로 Gemini 호출. 재시도·fallback."""
     client = _get_client()
     last_err = None
@@ -55,8 +72,8 @@ def _call_gemini_text(prompt: str) -> str:
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
-                    temperature=0.7,
-                    max_output_tokens=1024,
+                    temperature=0.5,
+                    max_output_tokens=max_output_tokens,
                 ),
             )
             if response and getattr(response, "text", None):
@@ -85,6 +102,107 @@ def generate_album_title_english(descriptions: list[str], fallback: str = "Our S
         return fallback
     result = re.sub(r'^["\']|["\']\s*$', "", result.strip())
     return result[:80] if result else fallback
+
+
+def _parse_highlight_order_json(text: str) -> dict[str, float] | None:
+    """
+    Gemini 응답에서 서사 가중치 맵 파싱. 순수 JSON: {"101": 9.5, "102": 4.0}
+    (구버전 {"order":[...]} 는 더 이상 사용하지 않음.)
+    """
+    if not text:
+        return None
+    raw = text.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\s*```\s*$", "", raw).strip()
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{[\s\S]*\}", raw)
+        if not m:
+            return None
+        try:
+            obj = json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(obj, dict):
+        return None
+    out: dict[str, float] = {}
+    for k, v in obj.items():
+        try:
+            sk = str(k).strip()
+            int(sk)  # validate numeric id key
+            fv = float(v)
+            out[sk] = max(0.0, min(10.0, fv))
+        except (TypeError, ValueError):
+            continue
+    return out if out else None
+
+
+def _media_file_to_narrative_payload(mf) -> dict:
+    """MediaFile → Gemini용 최소 필드 (ORM 속성만 사용)."""
+    aid = getattr(mf, "ai_analysis", None) or {}
+    if not isinstance(aid, dict):
+        aid = {}
+    summary = (aid.get("summary") or aid.get("description") or "").strip()[:200]
+    emotion = (aid.get("emotion") or "").strip()[:80]
+    return {
+        "id": int(mf.id),
+        "type": str(getattr(mf, "file_type", "image") or "image"),
+        "emotion": emotion or "unknown",
+        "summary": summary or "(no description)",
+    }
+
+
+def reorder_by_ai_scores(media_items: list, ai_scores: dict[str, float]) -> list:
+    """
+    narrative_weight 내림차순 정렬. 미입력 id는 0.0. 동점 시 order_index 오름차순.
+    """
+    return sorted(
+        media_items,
+        key=lambda x: (-float(ai_scores.get(str(x.id), 0.0)), x.order_index),
+    )
+
+
+def generate_highlight_narrative_scores(media_files: list) -> dict[str, float] | None:
+    """
+    선택 미디어마다 0~10 서사 가중치 맵 반환. 토큰·안정성: 순서 리스트 대신 짧은 JSON 맵.
+    장애·파싱 실패 시 None (호출부에서 order_index 폴백).
+    """
+    if not media_files:
+        return None
+    ids = [int(m.id) for m in media_files]
+    id_set = set(ids)
+    if len(ids) == 1:
+        return {str(ids[0]): 10.0}
+    payloads = [_media_file_to_narrative_payload(m) for m in media_files]
+    try:
+        items_json = json.dumps(payloads, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    prompt = HIGHLIGHT_NARRATIVE_SCORING_PROMPT + items_json
+    try:
+        # 출력이 짧아도 2.5 flash 내부 추론 토큰으로 잘리는 것 방지
+        result = _call_gemini_text(prompt, max_output_tokens=2048)
+        parsed = _parse_highlight_order_json(result or "")
+        if not parsed:
+            logger.warning("highlight narrative scores parse failed or empty")
+            return None
+        # 요청 id에 해당하는 키만 유지; 부분 누락 허용 → 없는 id는 0.0으로 정렬 시 뒤로
+        filtered: dict[str, float] = {}
+        for sid in id_set:
+            sk = str(sid)
+            if sk in parsed:
+                filtered[sk] = parsed[sk]
+        if not filtered:
+            logger.warning("highlight narrative scores: no matching ids in response %s", parsed.keys())
+            return None
+        # 전체 id에 대해 저장·정렬용 맵 완성
+        merged = {str(mid): float(filtered.get(str(mid), 0.0)) for mid in id_set}
+        logger.info("[AI Scoring] Assigned scores: %s", merged)
+        return merged
+    except Exception as e:  # noqa: BLE001
+        logger.warning("generate_highlight_narrative_scores failed: %s", e)
+        return None
 
 
 def generate_lyrical_captions(descriptions: list[str]) -> list[str]:

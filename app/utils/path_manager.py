@@ -49,6 +49,6 @@ def get_font_path_escaped_for_ffmpeg(font_filename: str) -> str:
 CINEMATIC_FONT_PRIMARY = "NanumPenScript-Regular.ttf"
 CINEMATIC_FONT_FALLBACK = "NotoSansKR[wght].ttf"
 
-# 영문 감성 자막 전용 (앨범용, 타이프라이터 스타일). static/fonts/ 에 해당 파일 추가 필요
-ENGLISH_CAPTION_FONT_PRIMARY = "SpecialElite-Regular.ttf"
-ENGLISH_CAPTION_FONT_FALLBACK = "NotoSansKR[wght].ttf"
+# 영문 감성 자막 전용 (9:16 가독성): Noto Sans KR 가변 폰트 (레포에 포함된 파일명)
+ENGLISH_CAPTION_FONT_PRIMARY = "NotoSansKR[wght].ttf"
+ENGLISH_CAPTION_FONT_FALLBACK = "NanumPenScript-Regular.ttf"

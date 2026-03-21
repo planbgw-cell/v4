@@ -38,6 +38,7 @@ from app.auth.dependencies import get_current_user_optional, COOKIE_KEY
 from app.crud import get_project, get_projects_by_user_id
 from app.database import (
     SessionLocal,
+    ensure_ai_narrative_order_column,
     ensure_ai_progress_columns,
     ensure_logs_column,
     ensure_project_type_column,
@@ -62,10 +63,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.on_event("startup")
 def on_startup():
-    """앱 기동 시 projects 로그·AI 진행률·project_type·user_id 컬럼이 없으면 추가."""
+    """앱 기동 시 projects 로그·AI 진행률·project_type·user_id·ai_narrative_order 컬럼이 없으면 추가."""
     ensure_logs_column()
     ensure_ai_progress_columns()
     ensure_project_type_column()
+    ensure_ai_narrative_order_column()
     ensure_user_id_column()
     for route in app.routes:
         print(f"[Route Check] Path: {route.path}")

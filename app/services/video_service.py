@@ -18,11 +18,14 @@ from app.crud import (
     update_media_file_ai_analysis,
     update_media_file_dimensions,
     update_media_file_is_selected,
+    update_project_ai_narrative_order,
     update_project_ai_progress,
     update_project_status,
 )
 from app.database import SessionLocal
+from app.models import ProjectMode
 from app.services.ai_analyzer import FlairyAIAnalyzer
+from app.services.narrative_service import generate_highlight_narrative_scores
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,41 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SCORE_THRESHOLD = 0.25
 # pHash 유사도 이상이면 중복으로 보고 한쪽은 제외 (0~1)
 PHASH_SIMILARITY_THRESHOLD = 0.90
+
+
+def _persist_highlight_narrative_order_sync(project_id: UUID) -> None:
+    """Curate 직후: video + AI 모드면 미디어별 서사 가중치(narrative_weight) 맵을 Gemini로 생성해 DB 저장."""
+    db = SessionLocal()
+    try:
+        project = get_project(db, project_id)
+        if not project or (project.project_type or "").lower() != "video":
+            return
+        mode_val = getattr(project.mode, "value", project.mode)
+        if str(mode_val) != ProjectMode.AI.value:
+            return
+        media = [m for m in get_media_files_by_project(db, project_id) if getattr(m, "is_selected", True)]
+        if not media:
+            return
+        try:
+            scores = generate_highlight_narrative_scores(media)
+            if scores:
+                update_project_ai_narrative_order(db, project_id, scores)
+                logger.info(
+                    "Highlight narrative scores saved: project=%s keys=%d",
+                    project_id,
+                    len(scores),
+                )
+            else:
+                logger.warning(
+                    "Highlight narrative scores not generated for %s; render will compute or use order_index.",
+                    project_id,
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Highlight narrative scoring failed for %s: %s", project_id, e)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("persist highlight narrative order failed: %s", e)
+    finally:
+        db.close()
 
 
 def _phash_similarity(h1: imagehash.ImageHash, h2: imagehash.ImageHash) -> float:
@@ -88,6 +126,7 @@ async def run_ai_analysis(project_id: UUID) -> None:
     db = SessionLocal()
     try:
         update_project_ai_progress(db, project_id, total=total)
+        update_project_ai_narrative_order(db, project_id, None)
         update_project_status(db, project_id, "ANALYZING")
     finally:
         db.close()
@@ -199,6 +238,11 @@ async def run_ai_analysis(project_id: UUID) -> None:
         phash_pairs_dropped,
         PHASH_SIMILARITY_THRESHOLD * 100,
     )
+
+    try:
+        await asyncio.to_thread(_persist_highlight_narrative_order_sync, project_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("narrative order (post-curate) failed: %s", e)
 
     db = SessionLocal()
     try:

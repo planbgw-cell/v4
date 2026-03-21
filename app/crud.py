@@ -2,7 +2,7 @@
 프로젝트 및 MediaFiles 기본 CRUD.
 JSONB ai_analysis 필드 읽기/쓰기 포함.
 """
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
@@ -111,6 +111,21 @@ def update_project_output_path(db: Session, project_id: UUID, output_path: str) 
     if not project:
         return None
     project.output_path = output_path
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def update_project_ai_narrative_order(
+    db: Session,
+    project_id: UUID,
+    order_data: Optional[Union[list[int], dict[str, float]]],
+) -> Optional[Project]:
+    """AI 하이라이트 서사 데이터 저장. dict[str,float]=가중치(권장), list[int]=구버전 순서. None이면 초기화."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return None
+    project.ai_narrative_order = order_data
     db.commit()
     db.refresh(project)
     return project

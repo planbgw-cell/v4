@@ -59,6 +59,17 @@ def ensure_project_type_column() -> None:
         pass
 
 
+def ensure_ai_narrative_order_column() -> None:
+    """projects에 ai_narrative_order(JSONB, 서사 가중치 dict 또는 구버전 순서 list)가 없으면 추가."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_narrative_order JSONB"
+            ))
+    except Exception:
+        pass
+
+
 def ensure_user_id_column() -> None:
     """projects에 user_id FK 컬럼이 없으면 추가 (users 테이블 선행 필요)."""
     try:
