@@ -165,6 +165,7 @@ def build_layout_ai(
     out: dict[str, Any] = {
         "title": project_title or "디지털 앨범",
         "aspect_ratio": ASPECT_RATIO,
+        "template_type": "standard",
         "pages": [],
     }
     if project_id is not None:
@@ -246,6 +247,7 @@ def build_layout_ai(
     # 앞표지: right=첫 미디어
     out["pages"].append({
         "type": "front",
+        "template_type": "standard",
         "left": None,
         "right": path_at(0),
         "title": cover_title,
@@ -259,6 +261,7 @@ def build_layout_ai(
         if i % 2 == 1:
             out["pages"].append({
                 "type": "spread",
+                "template_type": "standard",
                 "left": path_at(i),
                 "right": None,
                 "styles": {"left": style_at(i), "right": None},
@@ -268,6 +271,7 @@ def build_layout_ai(
         else:
             out["pages"].append({
                 "type": "spread",
+                "template_type": "standard",
                 "left": None,
                 "right": path_at(i),
                 "styles": {"left": None, "right": style_at(i)},
@@ -278,6 +282,7 @@ def build_layout_ai(
     # 뒷표지: left=null (프리미엄 뒷표지 디자인만)
     out["pages"].append({
         "type": "back",
+        "template_type": "standard",
         "left": None,
         "right": None,
         "caption": DEFAULT_CAPTION,
@@ -301,6 +306,7 @@ def build_layout(
     out: dict[str, Any] = {
         "title": project_title or "디지털 앨범",
         "aspect_ratio": ASPECT_RATIO,
+        "template_type": "standard",
         "pages": [],
     }
     if project_id is not None:
@@ -326,6 +332,7 @@ def build_layout(
     # 앞표지: 스프레드 규격. left=빈 공간, right=표지 미디어 (물리적 사이즈 일정)
     out["pages"].append({
         "type": "front",
+        "template_type": "standard",
         "left": None,
         "right": path_at(0),
         "title": project_title or "디지털 앨범",
@@ -348,6 +355,7 @@ def build_layout(
                 right_caption = DEFAULT_CAPTION
             out["pages"].append({
                 "type": "spread",
+                "template_type": "standard",
                 "left": left_path,
                 "right": right_path,
                 "styles": {"left": left_style, "right": right_style},
@@ -359,6 +367,7 @@ def build_layout(
     # 뒷표지: 스프레드 규격. left=마지막 미디어, right=빈 공간
     out["pages"].append({
         "type": "back",
+        "template_type": "standard",
         "left": path_at(n - 1),
         "right": None,
         "caption": DEFAULT_CAPTION,

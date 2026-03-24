@@ -83,14 +83,6 @@ window.initAlbumViewer = function () {
     return e ? " caption-emotion-" + e : "";
   }
 
-  function zoomOriginStyle(styles) {
-    if (!styles || !styles.focus_offset) return "";
-    var x = styles.focus_offset.x;
-    var y = styles.focus_offset.y;
-    if (x == null || y == null) return "";
-    return " --zoom-origin-x:" + String(x).trim() + "; --zoom-origin-y:" + String(y).trim() + ";";
-  }
-
   function escapeHtml(s) {
     var div = document.createElement("div");
     div.textContent = s;
@@ -102,14 +94,15 @@ window.initAlbumViewer = function () {
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
     var blurPart = isVideo
       ? ""
-      : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" />';
+      : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" decoding="async" />';
     var posStyle = objectPositionStyle(styles || {});
+    var fitCls = styles && styles.object_fit === "contain" ? "contain" : "cover";
     var mediaPart = isVideo
       ? '<div class="slot-video-stack">' +
         '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
-      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy"' + posStyle + " />";
+      : '<img class="slot-img ' + fitCls + '" src="' + url + '" alt="" loading="lazy" decoding="async"' + posStyle + " />";
     var captionPart = "";
     if (caption) {
       var emotionCls = emotionClass(styles || {});
@@ -123,10 +116,8 @@ window.initAlbumViewer = function () {
       var dotPart = accentHex ? '<span class="caption-accent-dot" style="color:' + accentHex + '">·</span> ' : "";
       captionPart = '<div class="slot-caption' + emotionCls + '"' + colorStyle + ">" + dotPart + escapeHtml(caption) + "</div>";
     }
-    var zoomOrigin = zoomOriginStyle(styles || {});
-    var zoompanCls = isVideo ? "" : " zoompan-ready";
     return (
-      '<div class="media-frame album-media-container' + zoompanCls + '"' + (zoomOrigin ? ' style="' + zoomOrigin + '"' : '') + '>' +
+      '<div class="media-frame album-media-container">' +
       blurPart +
       mediaPart +
       captionPart +
@@ -140,13 +131,13 @@ window.initAlbumViewer = function () {
     /* 앞표지만: 가로 이미지 시 상·하 검은 여백을 블러+확대 배경으로 채움 (내지 slotHtml과 별도) */
     var blurPart = isVideo
       ? ""
-      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" aria-hidden="true" />';
+      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" decoding="async" aria-hidden="true" />';
     var mediaPart = isVideo
       ? '<div class="slot-video-stack">' +
         '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
-      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" />';
+      : '<img class="slot-img cover" src="' + url + '" alt="" loading="lazy" decoding="async" />';
     var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(title || "") + "</div>";
     return (
       '<div class="media-frame album-media-container cover-front">' +
@@ -377,9 +368,18 @@ window.initAlbumViewer = function () {
 
   var layout = null;
   var currentIndex = 0;
+  var mobileSlots = [];
+  var MOBILE_BUFFER_RADIUS = 2;
+  var MOBILE_BREAKPOINT = 1024;
+  var lastWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+  var lastDesktopMode = null;
+  var resizeTimeout = null;
+  var lastDebugIndex = -1;
+  var FLIP_ANIM_MS = 1200;
+  var flipTokenSeed = 0;
 
   function isDesktop() {
-    return typeof window !== "undefined" && window.innerWidth >= 768;
+    return typeof window !== "undefined" && window.innerWidth >= MOBILE_BREAKPOINT;
   }
 
   function slotFromPageHalf(page, side) {
@@ -426,6 +426,187 @@ window.initAlbumViewer = function () {
       '<span class="leaf-page-num"' + pageNumStyle + ">Page " + pageNum + "</span></div>";
   }
 
+  function buildMobileSlots(pages) {
+    var slots = [];
+    if (!pages || !pages.length) return slots;
+    for (var i = 0; i < pages.length; i++) {
+      var p = pages[i];
+      if (!p) continue;
+      if (p.type === "front") {
+        if (p.right) slots.push({ kind: "front", page: p, pageIndex: i });
+        continue;
+      }
+      if (p.type === "back") {
+        slots.push({ kind: "back", page: p, pageIndex: i });
+        continue;
+      }
+      if (p.type === "spread") {
+        if (p.left) slots.push({ kind: "half", side: "left", page: p, pageIndex: i });
+        if (p.right) slots.push({ kind: "half", side: "right", page: p, pageIndex: i });
+      }
+    }
+    return slots;
+  }
+
+  function renderMobileSlot(slot, index) {
+    var pageNum = index + 1;
+    if (!slot) return '<div class="media-frame media-frame-placeholder"></div>';
+    if (slot.kind === "front") {
+      return slot.page.right
+        ? coverSlotHtml(slot.page.right, (slot.page.file_types && slot.page.file_types.right) || "", slot.page.title || "") + coverFooterHtml()
+        : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
+    }
+    if (slot.kind === "back") {
+      return backCoverHtml(projectId, getCreatedDateForCover());
+    }
+    var half = slotFromPageHalf(slot.page, slot.side);
+    return half.media + buildLeafCaptionBar(half.caption, pageNum, half.emotion, half.bgColorHex, half.accentColorHex);
+  }
+
+  function createMobileLeaf(index, totalLeaves) {
+    var leaf = document.createElement("div");
+    leaf.className = "leaf leaf-mobile";
+    leaf.dataset.leafIndex = String(index);
+    leaf.style.zIndex = String(totalLeaves - index);
+    var frontHtml = renderMobileSlot(mobileSlots[index], index);
+    frontHtml = frontHtml.replace(/(<img\b[^>]*?)\ssrc="([^"]*)"/g, "$1 data-src=\"$2\"");
+    leaf.innerHTML =
+      '<div class="leaf-inner">' +
+      '<div class="leaf-face front" style="background-color:#F9F9F9">' +
+      '<div class="shadow-overlay" aria-hidden="true"></div>' +
+      '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
+      '<div class="leaf-face-content">' + frontHtml + "</div>" +
+      "</div>" +
+      '<div class="leaf-face back" style="background-color:#F9F9F9">' +
+      '<div class="shadow-overlay" aria-hidden="true"></div>' +
+      '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
+      '<div class="leaf-face-content leaf-face-content--paper-back" aria-hidden="true"></div>' +
+      "</div>" +
+      "</div>";
+    leaf.querySelectorAll("img").forEach(function (img) {
+      img.setAttribute("decoding", "async");
+      img.setAttribute("loading", "lazy");
+    });
+    return leaf;
+  }
+
+  function injectLeafMedia(leaf, centerIndex) {
+    if (!leaf) return;
+    var idx = Number(leaf.dataset.leafIndex || "-1");
+    var isVisibleNow = idx === centerIndex;
+    leaf.querySelectorAll("img[data-src]").forEach(function (img) {
+      if (!img.getAttribute("src")) {
+        img.setAttribute("src", img.getAttribute("data-src"));
+      }
+      img.setAttribute("decoding", "async");
+      img.setAttribute("loading", isVisibleNow ? "eager" : "lazy");
+    });
+  }
+
+  function purgeLeafMedia(leaf) {
+    if (!leaf) return;
+    leaf.querySelectorAll("img").forEach(function (img) {
+      img.removeAttribute("srcset");
+      if (img.getAttribute("src")) {
+        img.setAttribute("data-src", img.getAttribute("src"));
+      }
+      img.removeAttribute("src");
+    });
+    leaf.querySelectorAll("video").forEach(function (v) {
+      try {
+        v.pause();
+      } catch (e) {}
+      v.removeAttribute("src");
+      v.load();
+    });
+  }
+
+  function renderMobileWindow(centerIndex) {
+    var bookBodyEl = document.getElementById("bookBody");
+    if (!bookBodyEl || !mobileSlots.length) return;
+    var total = mobileSlots.length;
+    for (var i = 0; i < total; i++) {
+      var leaf = bookBodyEl.querySelector('.leaf-mobile[data-leaf-index="' + i + '"]');
+      if (!leaf) continue;
+      var inBuf = i >= centerIndex - MOBILE_BUFFER_RADIUS && i <= centerIndex + MOBILE_BUFFER_RADIUS;
+      if (inBuf) {
+        leaf.style.display = "";
+        injectLeafMedia(leaf, centerIndex);
+      } else {
+        leaf.style.display = "none";
+        purgeLeafMedia(leaf);
+      }
+    }
+  }
+
+  function clearTouchAreas(bookBodyEl) {
+    if (!bookBodyEl) return;
+    bookBodyEl.querySelectorAll(".touch-area").forEach(function (el) {
+      el.remove();
+    });
+  }
+
+  function attachTouchAreas(bookBodyEl) {
+    if (!bookBodyEl || isDesktop()) return;
+    clearTouchAreas(bookBodyEl);
+    var left = document.createElement("div");
+    left.className = "touch-area touch-area-left";
+    left.setAttribute("aria-hidden", "true");
+    left.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      goPrev();
+    });
+    var right = document.createElement("div");
+    right.className = "touch-area touch-area-right";
+    right.setAttribute("aria-hidden", "true");
+    right.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      goNext();
+    });
+    bookBodyEl.appendChild(left);
+    bookBodyEl.appendChild(right);
+  }
+
+  function buildMobileLeaves() {
+    var bookBodyEl = document.getElementById("bookBody");
+    if (!bookBodyEl || !mobileSlots.length) return;
+    bookBodyEl.innerHTML = "";
+    var total = mobileSlots.length;
+    for (var i = 0; i < total; i++) {
+      bookBodyEl.appendChild(createMobileLeaf(i, total));
+    }
+    console.log("[DEBUG] buildMobileLeaves count:", bookBodyEl.querySelectorAll(".leaf-mobile").length);
+    renderMobileWindow(currentIndex);
+    attachTouchAreas(bookBodyEl);
+    setupVideoInPage(bookBodyEl);
+  }
+
+  function maxIndexForMode() {
+    if (isDesktop()) return Math.max(0, (layout && layout.pages && layout.pages.length) ? layout.pages.length - 1 : 0);
+    return Math.max(0, (mobileSlots && mobileSlots.length) ? mobileSlots.length - 1 : 0);
+  }
+
+  function checkLayout() {
+    if (!layout || !layout.pages || !layout.pages.length) return;
+    var nowDesktop = isDesktop();
+    if (lastDesktopMode !== null && lastDesktopMode !== nowDesktop) {
+      currentIndex = 0;
+    }
+    lastDesktopMode = nowDesktop;
+    var bookBodyEl = document.getElementById("bookBody");
+    if (bookBodyEl) {
+      clearTouchAreas(bookBodyEl);
+      bookBodyEl.innerHTML = "";
+    }
+    buildThumbnailBar();
+    if (nowDesktop) buildLeaves();
+    else buildMobileLeaves();
+    syncLeavesState();
+    updateShadowOverlays();
+  }
+
   function buildLeaves() {
     console.log("[Album] buildLeaves() entered, layout.pages length=" + (layout && layout.pages ? layout.pages.length : 0));
     if (!layout || !layout.pages || layout.pages.length < 2) {
@@ -466,15 +647,17 @@ window.initAlbumViewer = function () {
       var frontFaceStyle = 'style="background-color:' + frontBg + (frontSpine ? ";--spine-color:" + frontSpine : "") + '"';
       var backFaceStyle = 'style="background-color:' + backBg + (backSpine ? ";--spine-color:" + backSpine : "") + '"';
       var leaf = document.createElement("div");
-      leaf.className = "leaf";
+      leaf.className = "leaf leaf-pc";
       leaf.dataset.leafIndex = String(i);
       leaf.innerHTML =
         '<div class="leaf-inner">' +
         '<div class="leaf-face front" ' + frontFaceStyle + '>' +
+        '<div class="shadow-overlay" aria-hidden="true"></div>' +
         '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
         '<div class="leaf-face-content">' + frontHtml + "</div>" +
         "</div>" +
         '<div class="leaf-face back" ' + backFaceStyle + '>' +
+        '<div class="shadow-overlay" aria-hidden="true"></div>' +
         '<div class="leaf-spine-shadow" aria-hidden="true"></div>' +
         '<div class="leaf-face-content">' + backHtml + "</div>" +
         "</div>" +
@@ -487,25 +670,93 @@ window.initAlbumViewer = function () {
 
   function syncLeavesState() {
     if (!layout || !layout.pages) return;
-    var totalLeaves = layout.pages.length - 1;
-    if (totalLeaves <= 0) return;
-    var leaves = document.querySelectorAll("#bookBody .leaf");
-    for (var i = 0; i < leaves.length; i++) {
-      var leaf = leaves[i];
-      var isFlipped = i < currentIndex;
-      leaf.classList.toggle("flipped", isFlipped);
-      leaf.classList.toggle("active-zoom", i === currentIndex);
-      leaf.style.zIndex = isFlipped ? String(i) : String(totalLeaves - i);
+    if (isDesktop()) {
+      var leaves = document.querySelectorAll("#bookBody .leaf-pc");
+      var totalLeaves = leaves.length;
+      if (totalLeaves <= 0) return;
+      for (var i = 0; i < leaves.length; i++) {
+        var leaf = leaves[i];
+        var leafIndex = Number(leaf.dataset.leafIndex || i);
+        var isFlipped = leafIndex < currentIndex;
+        leaf.classList.toggle("flipped", isFlipped);
+        if (leaf.classList.contains("is-flipping")) {
+          continue;
+        }
+        // 레이어 대역 분리: flipped(낮은 대역), non-flipped(높은 대역)
+        leaf.style.zIndex = isFlipped
+          ? String(leafIndex)
+          : String((totalLeaves * 2) - leafIndex);
+      }
+    } else {
+      var mobileLeaves = document.querySelectorAll("#bookBody .leaf-mobile");
+      var totalMobile = mobileLeaves.length;
+      if (totalMobile <= 0) return;
+      for (var m = 0; m < mobileLeaves.length; m++) {
+        var mLeaf = mobileLeaves[m];
+        var idx = Number(mLeaf.dataset.leafIndex || "-1");
+        if (idx < 0) continue;
+        var mFlipped = idx < currentIndex;
+        mLeaf.classList.toggle("flipped", mFlipped);
+        if (mLeaf.classList.contains("is-flipping")) {
+          continue;
+        }
+        // 레이어 대역 분리: flipped(낮은 대역), non-flipped(높은 대역)
+        mLeaf.style.zIndex = mFlipped
+          ? String(idx)
+          : String((totalMobile * 2) - idx);
+      }
     }
+
+    if (window.__ALBUM_DEBUG__) {
+      if (currentIndex !== lastDebugIndex) {
+        lastDebugIndex = currentIndex;
+        var allLeaves = document.querySelectorAll("#bookBody .leaf");
+        console.table(Array.from(allLeaves).map(function (leaf) {
+          return {
+            index: leaf.dataset.leafIndex,
+            zIndex: window.getComputedStyle(leaf).zIndex,
+            transform: window.getComputedStyle(leaf).transform,
+            isFlipped: leaf.classList.contains("flipped"),
+            opacity: window.getComputedStyle(leaf).opacity,
+            width: window.getComputedStyle(leaf).width
+          };
+        }));
+        console.log("[DEBUG] CurrentStep:", currentIndex);
+        document.querySelectorAll("#bookBody .leaf").forEach(function (l) {
+          console.log(
+            "Leaf " + l.dataset.leafIndex +
+            " | Flipped: " + l.classList.contains("flipped") +
+            " | zIndex: " + l.style.zIndex
+          );
+        });
+      }
+    }
+  }
+
+  function updateShadowOverlays() {
+    document.querySelectorAll("#bookBody .leaf").forEach(function (leaf) {
+      leaf.classList.remove("shadow-next");
+    });
+    var nextIdx = currentIndex + 1;
+    var sel = isDesktop()
+      ? '#bookBody .leaf-pc[data-leaf-index="' + nextIdx + '"]'
+      : '#bookBody .leaf-mobile[data-leaf-index="' + nextIdx + '"]';
+    var nextLeaf = document.querySelector(sel);
+    if (nextLeaf) nextLeaf.classList.add("shadow-next");
   }
 
   function updateIndicatorAndThumb(index) {
     if (!layout || !layout.pages) return;
-    var page = layout.pages[index];
-    var total = layout.pages.length;
     var pageIndicator = document.getElementById("pageIndicator");
-    if (pageIndicator) pageIndicator.textContent =
-      getPageLabel(page, index, total) + " (" + (index + 1) + " / " + total + ")";
+    if (isDesktop()) {
+      var page = layout.pages[index];
+      var total = layout.pages.length;
+      if (pageIndicator) pageIndicator.textContent =
+        getPageLabel(page, index, total) + " (" + (index + 1) + " / " + total + ")";
+    } else {
+      var mobileTotal = mobileSlots.length || 1;
+      if (pageIndicator) pageIndicator.textContent = (index + 1) + " / " + mobileTotal;
+    }
     document.querySelectorAll(".thumb-item").forEach(function (el, i) {
       el.classList.toggle("active", i === index);
     });
@@ -519,19 +770,19 @@ window.initAlbumViewer = function () {
   function showPage(index) {
     console.log("[Album] showPage(" + index + ")");
     if (!layout || !layout.pages || !layout.pages.length) return;
-    var pages = layout.pages;
-    currentIndex = Math.max(0, Math.min(index, pages.length - 1));
-    var page = pages[currentIndex];
+    var maxIdx = maxIndexForMode();
+    currentIndex = Math.max(0, Math.min(index, maxIdx));
     updateIndicatorAndThumb(currentIndex);
     if (isDesktop()) {
       syncLeavesState();
+      updateShadowOverlays();
     } else {
-      var display = document.getElementById("pageDisplay");
-      if (display) {
-        disconnectVideoObserver();
-        display.innerHTML = renderPageContent(page, currentIndex, pages.length);
-        setupVideoInPage(display);
-      }
+      var bookBodyEl = document.getElementById("bookBody");
+      renderMobileWindow(currentIndex);
+      attachTouchAreas(bookBodyEl);
+      setupVideoInPage(bookBodyEl);
+      syncLeavesState();
+      updateShadowOverlays();
     }
   }
 
@@ -543,14 +794,64 @@ window.initAlbumViewer = function () {
     } catch (e) {}
   }
 
+  function leafSelectorForMode(index) {
+    var cls = isDesktop() ? "leaf-pc" : "leaf-mobile";
+    return '#bookBody .' + cls + '[data-leaf-index="' + index + '"]';
+  }
+
+  function getLeafByIndex(index) {
+    if (index == null || index < 0) return null;
+    return document.querySelector(leafSelectorForMode(index));
+  }
+
+  function markLeafFlipping(leaf, direction) {
+    if (!leaf) return;
+    var token = String(++flipTokenSeed);
+    leaf.dataset.flipToken = token;
+    leaf.classList.add("is-flipping");
+    if (window.__ALBUM_DEBUG__) {
+      console.log(
+        "[DEBUG] flip-start leaf=" + (leaf.dataset.leafIndex || "?") +
+        " dir=" + direction + " z=" + window.getComputedStyle(leaf).zIndex
+      );
+    }
+    var settled = false;
+    var onDone = function () {
+      if (settled) return;
+      settled = true;
+      if (leaf.dataset.flipToken !== token) return;
+      leaf.classList.remove("is-flipping");
+      leaf.removeEventListener("transitionend", onTransitionEnd);
+      if (window.__ALBUM_DEBUG__) {
+        console.log(
+          "[DEBUG] flip-end leaf=" + (leaf.dataset.leafIndex || "?") +
+          " dir=" + direction + " z=" + window.getComputedStyle(leaf).zIndex
+        );
+      }
+      syncLeavesState();
+      updateShadowOverlays();
+    };
+    var onTransitionEnd = function (evt) {
+      if (!evt || evt.propertyName === "transform") {
+        onDone();
+      }
+    };
+    leaf.addEventListener("transitionend", onTransitionEnd);
+    setTimeout(onDone, FLIP_ANIM_MS + 80);
+  }
+
   function goNext() {
-    if (!layout || !layout.pages || currentIndex >= layout.pages.length - 1) return;
+    if (!layout || !layout.pages || currentIndex >= maxIndexForMode()) return;
+    var flippingLeaf = getLeafByIndex(currentIndex);
+    markLeafFlipping(flippingLeaf, "next");
     playPageFlipSound("next");
     showPage(currentIndex + 1);
   }
 
   function goPrev() {
     if (!layout || !layout.pages || currentIndex <= 0) return;
+    var flippingLeaf = getLeafByIndex(currentIndex - 1);
+    markLeafFlipping(flippingLeaf, "prev");
     playPageFlipSound("prev");
     showPage(currentIndex - 1);
   }
@@ -562,14 +863,62 @@ window.initAlbumViewer = function () {
         '<span class="thumb-play-icon">&#9654;</span></div>';
     }
     return '<div class="thumb-spread-half filled">' +
-      '<img src="' + url + '" alt="" loading="lazy" />' + '</div>';
+      '<img src="' + url + '" alt="" loading="lazy" decoding="async" />' + '</div>';
   }
 
   function isVideoType(ft) {
     return (ft && ft.toLowerCase() === "video") || false;
   }
 
+  function thumbUrlFromMobileSlot(slot) {
+    if (!slot) return "";
+    if (slot.kind === "front") return slot.page.right ? toRawUrl(slot.page.right) : "";
+    if (slot.kind === "half") {
+      var p = slot.side === "left" ? slot.page.left : slot.page.right;
+      return p ? toRawUrl(p) : "";
+    }
+    return "";
+  }
+
+  function buildThumbnailBarMobile() {
+    var bar = document.getElementById("thumbBar");
+    if (!bar) return;
+    bar.innerHTML = "";
+    var total = mobileSlots.length;
+    mobileSlots.forEach(function (slot, i) {
+      var label = (i + 1) + " / " + total;
+      var url = thumbUrlFromMobileSlot(slot);
+      var isVid = false;
+      if (slot.kind === "half") {
+        var ft = slot.side === "left"
+          ? (slot.page.file_types && slot.page.file_types.left)
+          : (slot.page.file_types && slot.page.file_types.right);
+        var p = slot.side === "left" ? slot.page.left : slot.page.right;
+        isVid = isVideoType(ft) || isVideoPath(p);
+      } else if (slot.kind === "front") {
+        isVid = isVideoType((slot.page.file_types && slot.page.file_types.right)) || isVideoPath(slot.page.right);
+      }
+      var thumbInner =
+        '<div class="thumb-spread thumb-spread-mobile-single">' +
+        (url ? thumbHalfFilled(url, isVid) : '<div class="thumb-spread-half blank"></div>') +
+        "</div>";
+      var div = document.createElement("div");
+      div.className = "thumb-item" + (i === currentIndex ? " active" : "");
+      div.dataset.mobileIndex = String(i);
+      div.innerHTML = thumbInner + '<div class="thumb-label">' + escapeHtml(label) + "</div>";
+      div.addEventListener("click", function () {
+        if (i === currentIndex) return;
+        showPage(i);
+      });
+      bar.appendChild(div);
+    });
+  }
+
   function buildThumbnailBar() {
+    if (!isDesktop()) {
+      buildThumbnailBarMobile();
+      return;
+    }
     var bar = document.getElementById("thumbBar");
     if (!bar) return;
     bar.innerHTML = "";
@@ -659,9 +1008,10 @@ window.initAlbumViewer = function () {
       }
       var flipbookStateEl = document.getElementById("flipbookState");
       if (flipbookStateEl) flipbookStateEl.classList.remove("hidden");
-      console.log("[Album] buildThumbnailBar + buildLeaves + showPage(0)");
-      buildThumbnailBar();
-      buildLeaves();
+      console.log("[Album] mobileSlots + checkLayout + showPage(0)");
+      mobileSlots = buildMobileSlots(layout.pages);
+      lastDesktopMode = null;
+      checkLayout();
       showPage(0);
       console.log("[Album] Init complete (last log) — if you see this, engine ran to the end.");
     })
@@ -735,8 +1085,18 @@ window.initAlbumViewer = function () {
   }
 
   window.addEventListener("resize", function () {
-    if (!layout || !layout.pages) return;
-    showPage(currentIndex);
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(function () {
+      if (!layout || !layout.pages) return;
+      var newWidth = window.innerWidth;
+      if (newWidth === lastWidth) return;
+      lastWidth = newWidth;
+      var nowDesktop = isDesktop();
+      if (lastDesktopMode !== null && lastDesktopMode !== nowDesktop) {
+        checkLayout();
+      }
+      showPage(currentIndex);
+    }, 250);
   });
 
   /* 검증용: .book-container 높이 확인 후 제거 가능 */

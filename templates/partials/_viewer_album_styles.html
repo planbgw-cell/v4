@@ -1,6 +1,9 @@
 {# 앨범 뷰어 전용: 폰트+스타일 (HTMX 조각 삽입 시 적용) #}
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Nanum+Myeongjo&family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&family=Noto+Serif+KR:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --a4-ratio: 1.414;
+  }
   /* v3 스타일: 문서 흐름 레이아웃, 높이는 콘텐츠에 맡김 */
   .album-viewer-layout {
     width: 100% !important;
@@ -23,6 +26,9 @@
     gap: 10px !important;
     padding-top: 0 !important;
     padding-bottom: 1rem !important;
+    perspective: 2500px;
+    perspective-origin: center center;
+    overflow: hidden;
   }
   main.album-viewer-page .viewer-stage h1,
   .album-viewer-title {
@@ -99,6 +105,10 @@
     border-radius: 4px 4px 0 0;
     overflow: hidden;
   }
+  .thumb-spread-mobile-single .thumb-spread-half {
+    flex: 1 1 100%;
+    width: 100%;
+  }
   .thumb-spread-half {
     flex: 0 0 50%;
     width: 50%;
@@ -166,10 +176,37 @@
     max-width: min(900px, 95vw);
     margin: 0 auto;
   }
-  /* 데스크톱(768px 이상)에서는 3D 플립북만 표시, pageDisplay는 모바일 단일 페이지용 — 빈 공간 제거 */
-  @media (min-width: 768px) {
+  /* 데스크톱(1024px 이상): 스프레드 3D만 표시 */
+  @media (min-width: 1024px) {
     .book-container.book-mode + .page-display {
       display: none;
+    }
+  }
+  @media (max-width: 1023px) {
+    .flipbook-inner #pageDisplay.page-display {
+      display: none !important;
+    }
+    .album-top-section .book-container.book-mode {
+      width: 88vw !important;
+      max-width: 420px;
+      margin-left: auto;
+      margin-right: auto;
+      aspect-ratio: 1 / var(--a4-ratio) !important;
+      height: auto !important;
+    }
+    .album-top-section .book-container.book-mode .book-body {
+      width: 100% !important;
+      aspect-ratio: 1 / var(--a4-ratio) !important;
+      max-width: 100%;
+    }
+    .page-display {
+      width: 88vw !important;
+      max-width: 420px !important;
+      min-height: 0 !important;
+      margin-left: auto;
+      margin-right: auto;
+      aspect-ratio: 1 / var(--a4-ratio) !important;
+      height: auto !important;
     }
   }
   .page-display {
@@ -191,6 +228,7 @@
     justify-content: center;
     min-height: 456px;
     box-sizing: border-box;
+    transform-style: preserve-3d;
   }
   .spread-row .page-content {
     flex-direction: column;
@@ -220,6 +258,7 @@
     box-shadow: inset 0 0 12px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     background: #1a1a1a;
     flex-shrink: 0;
+    will-change: transform;
   }
 
   /* Floating Gallery (Portrait only): 프레임은 종이(배경) 역할 */
@@ -230,16 +269,6 @@
     background: #ffffff !important;
     --paper-pad: 12px;
     padding: var(--paper-pad) !important;
-  }
-  .media-frame.zoompan-ready {
-    transform-origin: var(--zoom-origin-x, 50%) var(--zoom-origin-y, 50%);
-  }
-  .leaf.active-zoom .media-frame.zoompan-ready {
-    animation: zoompan 12s ease-out forwards;
-  }
-  @keyframes zoompan {
-    from { transform: scale(1); }
-    to { transform: scale(1.08); }
   }
   /* 블러 배경: 세로/가로 모두 적용, A4 여백 침범 방지 */
   .slot-blur {
@@ -323,6 +352,9 @@
   .slot-img.contain {
     object-fit: contain;
   }
+  .slot-img.cover {
+    object-fit: cover;
+  }
   .slot-video {
     position: absolute;
     inset: 0;
@@ -342,6 +374,21 @@
     visibility: hidden !important;
   }
 
+  /* 3D 리프·모바일 스프레드: 줌/팬 대신 정적 cover + object-position (플로팅 갤러리 변형 무력화) */
+  #bookBody .leaf-face .media-frame.is-portrait .slot-img,
+  #bookBody .leaf-face .media-frame.is-portrait .slot-video,
+  .page-display .media-frame.is-portrait .slot-img,
+  .page-display .media-frame.is-portrait .slot-video {
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 4px !important;
+    object-fit: cover !important;
+    object-position: center center;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
   /* Floating Gallery (Portrait only): 인화지(미디어) 자체에 depth 부여 */
   .media-frame.is-portrait .slot-img,
   .media-frame.is-portrait .slot-video {
@@ -652,17 +699,36 @@
     width: 40%;
   }
 
+  #bookBody .touch-area {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    z-index: 100;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  #bookBody .touch-area-left {
+    left: 0;
+  }
+  #bookBody .touch-area-right {
+    right: 0;
+  }
+
   /* ----- 3D FlipBook: 책 컨테이너 및 리프 ----- */
   .book-container {
-    perspective: 2000px;
+    perspective: 2500px;
+    perspective-origin: center center;
     position: relative;
     z-index: 10;
     min-height: auto !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: visible;
+    overflow: hidden;
     transition: transform 0.25s ease-out;
+    transform-style: preserve-3d !important;
   }
   .book-container.peek-left {
     transform: rotateY(-4deg);
@@ -680,8 +746,7 @@
     max-width: 100%;
     aspect-ratio: 760 / 537;
     height: auto;
-    transform-style: preserve-3d;
-    overflow: visible;
+    overflow: hidden;
   }
   .book-body::after {
     content: "";
@@ -701,19 +766,42 @@
     left: 50%;
     width: 50%;
     height: 100%;
-    transform-style: preserve-3d;
-    transform-origin: left center;
+    transform-style: preserve-3d !important;
+    transform-origin: left center !important;
     transition: transform 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
     pointer-events: none;
+    will-change: transform;
+  }
+  /* 애니메이션 중인 리프는 대역 계산보다 우선하여 최상단 유지 */
+  .leaf.is-flipping {
+    z-index: 9999 !important;
+    will-change: transform;
+  }
+  .leaf-pc {
+    width: 50%;
+    left: 50%;
+    transform-origin: left center;
+  }
+  .leaf-mobile {
+    width: 100% !important;
+    left: 0 !important;
+    transform-origin: left center !important;
+    transform-style: preserve-3d !important;
+  }
+  @media (max-width: 1023px) {
+    .leaf-mobile.flipped {
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 1.2s cubic-bezier(0.645, 0.045, 0.355, 1), opacity 0.4s ease 0.6s;
+    }
   }
   .leaf .leaf-inner {
     position: absolute;
     inset: 0;
-    transform-style: preserve-3d;
     pointer-events: auto;
   }
   .leaf.flipped {
-    transform: rotateY(-180deg);
+    transform: rotateY(-180deg) translateZ(0.1px);
   }
   .leaf-face {
     position: absolute;
@@ -721,7 +809,9 @@
     left: 0;
     width: 100%;
     height: 100%;
+    -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    transform: translateZ(0);
     overflow: hidden;
     background: #F9F9F9;
     box-shadow: inset 5px 0 10px rgba(0,0,0,0.05), 0 2px 12px rgba(0,0,0,0.08);
@@ -747,6 +837,7 @@
     padding: 27px 19px 54px 19px;
     box-sizing: border-box;
     position: relative;
+    z-index: 5;
   }
   #bookBody .leaf-face-content:has(> .cover-back) {
     padding: 0;
@@ -773,6 +864,27 @@
     width: 12px;
     background: linear-gradient(90deg, var(--spine-color, rgba(0,0,0,0.25)), transparent);
     pointer-events: none;
+    z-index: 2;
+  }
+  .leaf-face .shadow-overlay {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s ease;
+    z-index: 3;
+  }
+  .leaf.shadow-next .shadow-overlay {
+    opacity: 0.18;
+  }
+  /* 넘김 중에는 고부하 시각 효과를 단순화해 3D 회전에 우선권 부여 */
+  .leaf.flipped .slot-blur,
+  .leaf.flipped .slot-blur-video,
+  .leaf.flipped .slot-blur-poster {
+    filter: none !important;
+    -webkit-filter: none !important;
+    opacity: 0 !important;
   }
   .leaf.flipped .leaf-spine-shadow {
     left: auto;
