@@ -163,6 +163,79 @@ def reorder_by_ai_scores(media_items: list, ai_scores: dict[str, float]) -> list
     )
 
 
+def reorder_by_ai_narrative(media_items: list, ai_scores: dict[str, float]) -> list:
+    """
+    하이브리드 서사 재배치.
+    - Intro: 고품질 + 비인물 중심(풍경/단체 느낌) 우선
+    - Climax: joy/surprise 계열 + 인물 중심 우선
+    - Outro: peaceful/calm/nostalgic/sad 계열 우선
+    """
+    if not media_items:
+        return []
+    if len(media_items) <= 2:
+        return reorder_by_ai_scores(media_items, ai_scores)
+
+    climax_emotions = {"joy", "surprise", "excited", "happy"}
+    outro_emotions = {"peaceful", "calm", "nostalgic", "sad", "melancholy"}
+
+    enriched = []
+    for m in media_items:
+        aid = getattr(m, "ai_analysis", None) or {}
+        if not isinstance(aid, dict):
+            aid = {}
+        emotion = str(aid.get("emotion") or "").strip().lower()
+        score = float(ai_scores.get(str(m.id), aid.get("score_100", 0.0) or 0.0))
+        sb = aid.get("subject_box")
+        is_person_focused = False
+        if isinstance(sb, (list, tuple)) and len(sb) == 4:
+            try:
+                ymin, xmin, ymax, xmax = [float(v) for v in sb]
+                if max(ymin, xmin, ymax, xmax) > 1.0:
+                    ymin, xmin, ymax, xmax = ymin / 1000.0, xmin / 1000.0, ymax / 1000.0, xmax / 1000.0
+                area = max(0.0, ymax - ymin) * max(0.0, xmax - xmin)
+                is_person_focused = area >= 0.12
+            except (TypeError, ValueError):
+                is_person_focused = False
+
+        intro_bias = score + (0.6 if not is_person_focused else -0.2)
+        climax_bias = score + (1.0 if emotion in climax_emotions else 0.0) + (0.8 if is_person_focused else 0.0)
+        outro_bias = score + (1.0 if emotion in outro_emotions else 0.0) + (0.4 if not is_person_focused else 0.0)
+        enriched.append(
+            {
+                "media": m,
+                "score": score,
+                "emotion": emotion,
+                "person": is_person_focused,
+                "intro_bias": intro_bias,
+                "climax_bias": climax_bias,
+                "outro_bias": outro_bias,
+            }
+        )
+
+    intro_n = 1 if len(enriched) < 6 else 2
+    outro_n = 1 if len(enriched) < 7 else 2
+    intro_sorted = sorted(enriched, key=lambda x: (-x["intro_bias"], x["media"].order_index))
+    intro_pick = intro_sorted[:intro_n]
+    picked_ids = {x["media"].id for x in intro_pick}
+
+    remaining = [x for x in enriched if x["media"].id not in picked_ids]
+    outro_sorted = sorted(remaining, key=lambda x: (-x["outro_bias"], x["media"].order_index))
+    outro_pick = outro_sorted[:outro_n]
+    picked_ids.update(x["media"].id for x in outro_pick)
+
+    middle = [x for x in enriched if x["media"].id not in picked_ids]
+    middle_sorted = sorted(middle, key=lambda x: (-x["climax_bias"], x["media"].order_index))
+
+    ordered = [x["media"] for x in intro_pick + middle_sorted + outro_pick]
+    logger.info(
+        "[AI Narrative] reordered: intro=%s middle=%s outro=%s",
+        [m.id for m in [x["media"] for x in intro_pick]],
+        [m.id for m in [x["media"] for x in middle_sorted]],
+        [m.id for m in [x["media"] for x in outro_pick]],
+    )
+    return ordered
+
+
 def generate_highlight_narrative_scores(media_files: list) -> dict[str, float] | None:
     """
     선택 미디어마다 0~10 서사 가중치 맵 반환. 토큰·안정성: 순서 리스트 대신 짧은 JSON 맵.

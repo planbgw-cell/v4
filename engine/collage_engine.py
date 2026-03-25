@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.models import MediaFile
 from app.utils.path_manager import get_font_path_escaped_for_ffmpeg
+from engine.preprocess_media import ensure_fhd_portrait
 
 logger = logging.getLogger(__name__)
 
@@ -368,4 +369,100 @@ def render_collage_clip(
         raise RuntimeError(f"콜라주 출력 파일이 생성되지 않음: {out_path}")
 
     logger.info("인트로 콜라주 생성 완료: %s (score 상위 %d장)", out_path.name, len(loaded))
+    return out_path
+
+
+def render_split_intro_clip(
+    media_pair: list[MediaFile],
+    base_dir: Path,
+    out_path: Path,
+    duration_sec: float = 3.0,
+) -> Path:
+    """
+    2분할(상/하) 인트로 클립 생성.
+    - 입력 2장을 preprocess_media.ensure_fhd_portrait로 사전 1080x1920 정규화
+    - ffmpeg overlay로 1080x960 + 1080x960 영역에 배치
+    """
+    if len(media_pair) < 2:
+        raise ValueError("2분할 콜라주에는 2개 미디어가 필요합니다.")
+
+    base_dir = Path(base_dir)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    prep_paths: list[Path] = []
+    for i, mf in enumerate(media_pair[:2]):
+        rel = (mf.ai_analysis or {}).get("upright_path") or mf.file_path
+        src_path = base_dir / rel
+        if not src_path.is_file():
+            src_path = base_dir / mf.file_path
+        if not src_path.is_file():
+            raise FileNotFoundError(f"분할 콜라주 소스 파일 없음: {mf.file_path}")
+        prep = out_path.parent / f"split_intro_src_{i:02d}.jpg"
+        prep_paths.append(ensure_fhd_portrait(src_path, prep))
+
+    duration = max(0.1, float(duration_sec))
+    filter_complex = (
+        "[0:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960[top];"
+        "[1:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960[bottom];"
+        "color=c=black:s=1080x1920:r=30[base];"
+        "[base][top]overlay=0:0[tmp];"
+        "[tmp][bottom]overlay=0:960,format=yuv420p[v]"
+    )
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        str(prep_paths[0]),
+        "-loop",
+        "1",
+        "-i",
+        str(prep_paths[1]),
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[v]",
+        "-map",
+        "2:a",
+        "-t",
+        f"{duration:.3f}",
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "4.2",
+        "-b:v",
+        "6M",
+        "-maxrate",
+        "8M",
+        "-bufsize",
+        "12M",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-shortest",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=COLLAGE_FFMPEG_TIMEOUT_SEC)
+    for p in prep_paths:
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    if result.returncode != 0:
+        logger.error("2분할 인트로 FFmpeg stderr: %s", result.stderr)
+        raise RuntimeError(f"2분할 콜라주 생성 실패: {result.stderr or result.stdout}")
+    if not out_path.is_file():
+        raise RuntimeError(f"2분할 콜라주 출력 파일이 생성되지 않음: {out_path}")
+    logger.info("2분할 인트로 콜라주 생성 완료: %s", out_path.name)
     return out_path
