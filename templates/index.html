@@ -37,9 +37,10 @@
   </section>
 
   <!-- Counters -->
-  <div class="flex gap-6 mb-2 text-sm text-gray-600">
+  <div class="flex flex-wrap gap-x-6 gap-y-1 mb-2 text-sm text-gray-600">
     <span id="counterTotal">사진+영상: 0/30</span>
     <span id="counterVideo">영상: 0/5</span>
+    <span id="counterMin" class="text-amber-700 font-medium"></span>
   </div>
 
   <!-- Drag & Drop zone -->
@@ -49,6 +50,7 @@
   >
     <p class="text-gray-500">여기에 사진이나 영상을 끌어다 놓으세요</p>
     <p class="text-sm text-gray-400 mt-1">또는 위의 [파일 선택] 버튼을 사용하세요</p>
+    <p class="text-sm text-amber-800 mt-2">최소 5장의 사진을 업로드해 주세요 (사진·영상 합산 5개 이상)</p>
   </section>
   <input type="file" id="fileInput" multiple accept="image/*,video/*" class="hidden" />
 
@@ -253,6 +255,7 @@
 <script>
 (function () {
   const MAX_TOTAL = 30;
+  const MIN_UPLOAD_FILES = 5;
   const MAX_VIDEO = 5;
   const MAX_VIDEO_BYTES = 150 * 1024 * 1024; // 150MB (Bytes)
 
@@ -267,6 +270,7 @@
   const thumbnailList = document.getElementById('thumbnailList');
   const counterTotal = document.getElementById('counterTotal');
   const counterVideo = document.getElementById('counterVideo');
+  const counterMin = document.getElementById('counterMin');
   const modeRadios = document.querySelectorAll('input[name="gen_mode"]');
 
   function formatSize(bytes) {
@@ -279,11 +283,43 @@
     return (type || '').startsWith('video/');
   }
 
+  function updateGenButtonsState() {
+    const btnV = document.getElementById('btnGenVideo');
+    const btnA = document.getElementById('btnGenAlbum');
+    const total = fileList.length;
+    const videos = fileList.filter((e) => isVideo(e.file.type)).length;
+    const countOk =
+      total >= MIN_UPLOAD_FILES &&
+      total <= MAX_TOTAL &&
+      videos <= MAX_VIDEO;
+    if (!countOk) {
+      setButtonsIdle();
+    }
+    [btnV, btnA].forEach(function (btn) {
+      if (!btn) return;
+      btn.disabled = !countOk;
+      if (!countOk) {
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    });
+  }
+
   function updateCounters() {
     const total = fileList.length;
     const videos = fileList.filter((e) => isVideo(e.file.type)).length;
     counterTotal.textContent = '사진+영상: ' + total + '/' + MAX_TOTAL;
     counterVideo.textContent = '영상: ' + videos + '/' + MAX_VIDEO;
+    if (counterMin) {
+      if (total < MIN_UPLOAD_FILES) {
+        counterMin.textContent =
+          '선택: ' + total + '/' + MAX_TOTAL + ' (최소 ' + MIN_UPLOAD_FILES + '개 필요)';
+      } else {
+        counterMin.textContent = '';
+      }
+    }
+    updateGenButtonsState();
   }
 
   function renderItem(item, index) {
@@ -492,8 +528,8 @@
   });
 
   function validateForSubmit() {
-    if (fileList.length === 0) {
-      alert('파일을 1개 이상 선택해 주세요.');
+    if (fileList.length < MIN_UPLOAD_FILES) {
+      alert('최소 5개 이상의 사진을 업로드해야 앨범 생성이 가능합니다.');
       return false;
     }
     if (fileList.length > MAX_TOTAL) {
@@ -621,8 +657,6 @@
 
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
-      if (btnVideo) btnVideo.disabled = false;
-      if (btnAlbumBtn) btnAlbumBtn.disabled = false;
       if (typeof restoreButtonsText === "function") restoreButtonsText();
 
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -664,8 +698,6 @@
     };
 
     xhr.onerror = function () {
-      if (btnVideo) btnVideo.disabled = false;
-      if (btnAlbumBtn) btnAlbumBtn.disabled = false;
       if (typeof restoreButtonsText === "function") restoreButtonsText();
       markAllError('업로드 중 네트워크 오류가 발생했습니다.');
     };
@@ -710,10 +742,10 @@
   function restoreButtonsText() {
     [btnGenVideo, btnGenAlbum].forEach((btn) => {
       if (!btn) return;
-      btn.disabled = false;
-      setButtonsIdle();
       if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
     });
+    setButtonsIdle();
+    updateGenButtonsState();
   }
 
   function onClickGenerate(actionType) {
@@ -728,6 +760,8 @@
 
   btnGenVideo && btnGenVideo.addEventListener('click', function () { onClickGenerate('highlight'); });
   btnGenAlbum && btnGenAlbum.addEventListener('click', function () { onClickGenerate('album'); });
+
+  updateCounters();
 })();
 </script>
 {% endblock %}

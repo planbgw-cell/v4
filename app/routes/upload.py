@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api", tags=["upload"])
 ROOT = Path(__file__).resolve().parent.parent.parent
 STORAGE_RAW_BASE = ROOT / "storage" / "raw"
 
+MIN_UPLOAD_FILES = 5
 MAX_TOTAL = 30
 MAX_VIDEO_COUNT = 5
 MAX_VIDEO_BYTES = 150 * 1024 * 1024  # 150MB (Bytes)
@@ -59,8 +60,11 @@ async def api_upload(
     files: list[UploadFile] = File(default=[]),
 ):
     """프로젝트 생성 후 파일을 storage/raw/{project_id}/ 에 저장하고 MediaFiles에 기록. 순서 유지."""
-    if not files:
-        raise HTTPException(status_code=400, detail="파일을 1개 이상 선택해 주세요.")
+    if len(files) < MIN_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail="최소 5개 이상의 사진을 업로드해야 앨범 생성이 가능합니다.",
+        )
 
     _validate_files(files)
 

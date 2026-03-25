@@ -130,6 +130,7 @@ def _run_generate_task(project_id_str: str) -> None:
 
 # 앨범 AI 모드: score_100 이하면 제외 (60점 미만)
 ALBUM_SCORE_THRESHOLD = 60
+MIN_ALBUM_MEDIA_FILES = 5
 
 
 def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
@@ -137,6 +138,19 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
     try:
         media_files = getattr(project, "media_files", None) or []
         sorted_media = sorted(media_files, key=lambda m: getattr(m, "order_index", 0))
+        if len(sorted_media) < MIN_ALBUM_MEDIA_FILES:
+            logger.warning(
+                "앨범: 미디어 %d개로 최소 %d개 미만 project_id=%s",
+                len(sorted_media),
+                MIN_ALBUM_MEDIA_FILES,
+                project_id,
+            )
+            db = SessionLocal()
+            try:
+                update_project_status(db, project_id, "FAILED")
+            finally:
+                db.close()
+            return
         title = getattr(project, "title", None) or "디지털 앨범"
 
         if _is_ai_mode(project):

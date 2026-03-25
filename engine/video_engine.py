@@ -1194,6 +1194,22 @@ class FlairyVideoEngine:
             logger.warning("프로젝트 %s에 미디어 파일이 없습니다.", self.project_id)
             return None
 
+        MIN_MEDIA_FOR_VIDEO = 5
+        if len(media_files) < MIN_MEDIA_FOR_VIDEO:
+            logger.warning(
+                "프로젝트 %s에 선택된 미디어가 %d개로 최소 %d개 미만입니다.",
+                self.project_id,
+                len(media_files),
+                MIN_MEDIA_FOR_VIDEO,
+            )
+            self._append_log("오류: 미디어가 최소 5개 이상 필요합니다.")
+            db = SessionLocal()
+            try:
+                update_project_status(db, self.project_id, "FAILED")
+            finally:
+                db.close()
+            return None
+
         image_media = [mf for mf in media_files if mf.file_type == "image"]
         missing = [mf for mf in image_media if not mf.ai_analysis]
         if use_ai and missing:
