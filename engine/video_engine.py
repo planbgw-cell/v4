@@ -67,6 +67,15 @@ ENGLISH_CAPTION_Y_OFFSET = 260  # 큰 글자에 맞춰 약간 상향
 ENGLISH_CAPTION_TYPEWRITER_CHARS_MAX = 30  # 타이프라이터 drawtext 체인 글자 수 상한
 SUBTITLE_RATIO = 0.45  # 전체 클립 중 자막 노출 비율 (40~50%)
 
+# AI 감성 자막 (손글씨/필기체) 스타일
+EMO_CAPTION_FADE_SEC = 0.5
+EMO_CAPTION_BORDER_W = 1
+EMO_CAPTION_BORDER_COLOR = "black@0.45"
+EMO_CAPTION_SHADOW_COLOR = "black@0.4"
+EMO_CAPTION_FONT_COLOR = "0xF9F9F9"
+EMO_CAPTION_Y_OFFSET = 340  # 하단 20% 세이프 존 안쪽 (1920*0.2=384)
+EMO_CAPTION_MAX_CHARS = 70
+
 
 def _ai_subtitle_indices_along_narrative(
     main_media_list: list[MediaFile],
@@ -138,6 +147,11 @@ SAFE_ZONE_TOP_OFFSET = 0.12
 ZOOMPAN_AI_MAX_ZOOM = 1.4
 # 가로 사진 배경 블러 강도 (감성 배경)
 LANDSCAPE_BOXBLUR = "40:20"
+
+# Rule-based 첫 클립 앨범 제목 오버레이 (1080 기준 약 6~8%)
+RULE_BASED_TITLE_FONT_SIZE = 72
+RULE_BASED_TITLE_TOP_GRADIENT_H = 0.20  # 화면 상단 20% 밴드
+RULE_BASED_TITLE_Y_EXPR = "h*0.12"  # 상단 10~15% 세이프 존
 
 # 모바일 최적화 인코딩 (Phase 5): CRF 23~28, 선택적 HEVC/NVENC
 OUTPUT_CRF = 25
@@ -267,6 +281,18 @@ def _write_typewriter_ass(text: str, out_path: Path, duration_sec: float = 3.0) 
         f"Dialogue: 0,0:00:00.00,{end_str},Default,,0,0,0,,{typewriter_body}\n"
     )
     out_path.write_text(script_info + styles + events, encoding="utf-8")
+
+
+def format_rule_based_title(title: str) -> str:
+    """
+    Rule-based 하이라이트 앨범 제목 표시용: 10자 초과 시 말줄임(...).
+    기획안 format_title과 동일 (len 기준). 빈 문자열은 그대로 반환 — 기본 문구는 _run의 intro_title에서 처리.
+    """
+    t = (title or "").strip()
+    limit = 10
+    if len(t) > limit:
+        return t[:limit] + "..."
+    return t
 
 
 class FlairyVideoEngine:
@@ -619,6 +645,7 @@ class FlairyVideoEngine:
         subtitle_text: str | None = None,
         clip_duration_sec: float = CLIP_DURATION_SEC,
         clip_frames: int = CLIP_FRAMES,
+        overlay_album_title: str | None = None,
     ) -> Path:
         """
         9:16(1080x1920) 레이아웃으로 이미지를 clip_duration_sec MP4 클립 생성.
@@ -656,10 +683,17 @@ class FlairyVideoEngine:
                 self._append_log(f"Rule-based EXIF 전처리 실패, 원본 사용: {e}")
             try:
                 fhd_path_to_cleanup = self.temp_dir / f"fhd_{index:04d}.jpg"
-                input_path = ensure_fhd_portrait(input_path, fhd_path_to_cleanup)
-                preprocessed_fhd = True
-                logger.info("[RENDER] Rule-based: 1080x1920 사전 정규화 완료 -> %s", fhd_path_to_cleanup.name)
-                self._append_log("Rule-based: 1080x1920 센터-핏 전처리 완료")
+                if self._rule_based_should_fhd_preprocess(input_path):
+                    input_path = ensure_fhd_portrait(input_path, fhd_path_to_cleanup)
+                    preprocessed_fhd = True
+                    logger.info("[RENDER] Rule-based: 1080x1920 사전 정규화 완료 -> %s", fhd_path_to_cleanup.name)
+                    self._append_log("Rule-based: 1080x1920 센터-핏 전처리 완료")
+                else:
+                    fhd_path_to_cleanup = None
+                    logger.info(
+                        "[RENDER] Rule-based: FHD 레터박스 생략(가로·비9:16 세로) → FFmpeg 블러/크롭 경로"
+                    )
+                    self._append_log("Rule-based: FHD 레터박스 생략 (블러 배경/크롭)")
             except Exception as e:
                 logger.warning("[RENDER] Rule-based FHD 전처리 실패, 기존 입력 사용: %s", e)
                 self._append_log(f"Rule-based FHD 전처리 실패, 기존 입력 사용: {e}")
@@ -683,9 +717,17 @@ class FlairyVideoEngine:
         if vf.endswith("[vid]"):
             vf = vf[:-5]
             if subtitle_text:
-                ass_path = self.temp_dir / f"sub_caption_{index:04d}.ass"
-                _write_typewriter_ass(subtitle_text, ass_path, clip_duration_sec)
-                vf += "," + self._build_subtitles_filter(ass_path)
+                if use_ai:
+                    vf += "," + self._build_emotional_caption_drawtext(
+                        subtitle_text,
+                        clip_duration_sec=float(clip_duration_sec),
+                    )
+                else:
+                    ass_path = self.temp_dir / f"sub_caption_{index:04d}.ass"
+                    _write_typewriter_ass(subtitle_text, ass_path, clip_duration_sec)
+                    vf += "," + self._build_subtitles_filter(ass_path)
+            if overlay_album_title:
+                vf += "," + self._build_rule_based_title_overlay_filters(overlay_album_title)
             vf += VF_CFR_IMAGE + "[vid]"
         encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
         cmd = [
@@ -754,6 +796,7 @@ class FlairyVideoEngine:
         use_ai: bool = False,
         subtitle_text: str | None = None,
         clip_duration_sec: float = CLIP_DURATION_SEC,
+        overlay_album_title: str | None = None,
     ) -> Path:
         """
         동영상 MediaFile을 9:16(1080x1920) 레이아웃으로 정규화.
@@ -784,9 +827,17 @@ class FlairyVideoEngine:
         if vf.endswith("[vid]"):
             vf = vf[:-5]
             if subtitle_text:
-                ass_path = self.temp_dir / f"sub_caption_{index:04d}.ass"
-                _write_typewriter_ass(subtitle_text, ass_path, sub_dur)
-                vf += "," + self._build_subtitles_filter(ass_path)
+                if use_ai:
+                    vf += "," + self._build_emotional_caption_drawtext(
+                        subtitle_text,
+                        clip_duration_sec=float(sub_dur),
+                    )
+                else:
+                    ass_path = self.temp_dir / f"sub_caption_{index:04d}.ass"
+                    _write_typewriter_ass(subtitle_text, ass_path, sub_dur)
+                    vf += "," + self._build_subtitles_filter(ass_path)
+            if overlay_album_title:
+                vf += "," + self._build_rule_based_title_overlay_filters(overlay_album_title)
             # 영상·오디오 동일 길이: trim/atrim 후 CFR (이미지 클립과 동일 max 길이)
             vf += (
                 f",trim=start=0:duration={clip_dur:.3f},setpts=PTS-STARTPTS"
@@ -1111,9 +1162,68 @@ class FlairyVideoEngine:
                 return f"fontfile='{escaped}':"
         return ""
 
+    def _is_korean_text(self, s: str) -> bool:
+        for ch in (s or ""):
+            o = ord(ch)
+            if 0xAC00 <= o <= 0xD7A3:
+                return True
+        return False
+
+    def _get_emotional_caption_fontfile_opt(self, subtitle_text: str) -> str:
+        """AI 감성 자막 폰트: 한글은 NanumPen, 영문은 DancingScript 우선."""
+        if self._is_korean_text(subtitle_text):
+            for name in ("NanumPen.otf", "NanumPen.ttf", "NanumPenScript-Regular.ttf", "NotoSansKR[wght].ttf"):
+                escaped = get_font_path_escaped_for_ffmpeg(name)
+                if escaped:
+                    return f"fontfile='{escaped}':"
+        else:
+            for name in ("DancingScript-Regular.ttf", "DancingScript-VariableFont_wght.ttf", "DancingScript-SemiBold.ttf", "NanumPenScript-Regular.ttf"):
+                escaped = get_font_path_escaped_for_ffmpeg(name)
+                if escaped:
+                    return f"fontfile='{escaped}':"
+        return ""
+
     def _escape_drawtext(self, raw: str) -> str:
         """FFmpeg drawtext text= 값 이스케이프 (', \\, :)."""
         return (raw or "").replace("\\", "\\\\").replace("'", "'\\''").replace(":", "\\:")
+
+    def _rule_based_should_fhd_preprocess(self, path: Path) -> bool:
+        """
+        Pillow ensure_fhd_portrait(레터박스)는 9:16에 가까운 세로 사진에만 사용.
+        가로·정사각·비9:16 세로는 FFmpeg 분기(블러 배경/크롭)로 처리해 상하 블랙바를 피한다.
+        """
+        try:
+            probe = self._probe_media(path)
+        except (RuntimeError, OSError, ValueError, KeyError) as e:
+            logger.warning("[RENDER] Rule-based FHD 판별용 probe 실패, FHD 시도: %s", e)
+            return True
+        w, h = int(probe["width"]), int(probe["height"])
+        rot = int(probe.get("rotation", 0) or 0) % 360
+        if rot in (90, 270):
+            w, h = h, w
+        if h <= 0:
+            return True
+        aspect_src = w / float(h)
+        aspect_916 = CANVAS_W / float(CANVAS_H)
+        is_portrait = w < h
+        if not is_portrait:
+            return False
+        return abs(aspect_src - aspect_916) < 0.01
+
+    def _build_rule_based_title_overlay_filters(self, display_title: str) -> str:
+        """첫 클립 상단: 반투명 밴드 + 제목 drawtext (Noto 우선)."""
+        label = self._escape_drawtext((display_title or "").strip()) or " "
+        font_esc = get_font_path_escaped_for_ffmpeg("NotoSansKR[wght].ttf")
+        font_opt = f"fontfile='{font_esc}':" if font_esc else ""
+        gh = RULE_BASED_TITLE_TOP_GRADIENT_H
+        band = f"drawbox=x=0:y=0:w=iw:h=ih*{gh}:color=black@0.35:t=fill"
+        text = (
+            f"drawtext=text='{label}':{font_opt}"
+            f"fontsize={RULE_BASED_TITLE_FONT_SIZE}:fontcolor=0xF9F9F9:"
+            f"shadowcolor=black@0.6:shadowx=2:shadowy=2:"
+            f"x=(w-text_w)/2:y={RULE_BASED_TITLE_Y_EXPR}"
+        )
+        return f"{band},{text}"
 
     def _build_subtitles_filter(self, ass_path: Path) -> str:
         """subtitles= 필터 문자열. 경로 내 ', : 이스케이프로 Option not found 방지. fontsdir로 앨범 폰트 로드."""
@@ -1130,6 +1240,30 @@ class FlairyVideoEngine:
             f"fontcolor=0xF9F9F9:borderw=3:bordercolor=black@0.85:"
             f"shadowcolor=black@0.4:shadowx=2:shadowy=2:"
             f"x=(w-tw)/2:y=h-th-{ENGLISH_CAPTION_Y_OFFSET}"
+        )
+
+    def _build_emotional_caption_drawtext(self, subtitle_text: str, *, clip_duration_sec: float) -> str:
+        """
+        AI 감성 자막(drawtext): 손글씨/필기체 폰트, 부드러운 외곽/그림자, 0.5초 페이드.
+        """
+        raw = (subtitle_text or "").strip()
+        label = self._escape_drawtext(raw[:EMO_CAPTION_MAX_CHARS]) or " "
+        font_opt = self._get_emotional_caption_fontfile_opt(raw)
+        d = max(0.1, float(clip_duration_sec))
+        f = float(EMO_CAPTION_FADE_SEC)
+        # alpha: 0→1(fade-in), 유지, 1→0(fade-out)
+        alpha = (
+            f"if(lt(t\\,{f}),t/{f},"
+            f"if(lt(t\\,{d}-{f}),1,max(0,({d}-t)/{f})))"
+        )
+        return (
+            f"drawtext=text='{label}':{font_opt}"
+            f"fontsize={ENGLISH_CAPTION_FONT_SIZE}:"
+            f"fontcolor={EMO_CAPTION_FONT_COLOR}:"
+            f"borderw={EMO_CAPTION_BORDER_W}:bordercolor={EMO_CAPTION_BORDER_COLOR}:"
+            f"shadowcolor={EMO_CAPTION_SHADOW_COLOR}:shadowx=2:shadowy=2:"
+            f"alpha='{alpha}':"
+            f"x=(w-text_w)/2:y=h-text_h-{EMO_CAPTION_Y_OFFSET}"
         )
 
     def _add_bgm(
@@ -1329,6 +1463,7 @@ class FlairyVideoEngine:
             )
         finally:
             db.close()
+        rule_first_clip_title = format_rule_based_title(intro_title) if not use_ai else None
         # 1단계: 유니크 리스트만 사용 (video_service Curate에서 중복 90% 제거 후 is_selected=True만 남김)
         media_files = [mf for mf in media_files if getattr(mf, "is_selected", True)]
         if not media_files:
@@ -1416,7 +1551,8 @@ class FlairyVideoEngine:
         split_intro_pair: list[MediaFile] = []
         if use_ai:
             intro_group = get_intro_images(media_files)  # 원본 리스트 변형 없음
-            split_intro_pair = self._pick_similar_emotion_pair(media_files)
+            # AI 인트로 고도화(폴라로이드 콜라주)에서는 2분할 인트로를 사용하지 않는다.
+            split_intro_pair = []
         main_media_list = list(media_files)  # 유니크 리스트 전체(인트로와 중복 허용)
         has_intro = bool(split_intro_pair) or bool(intro_group)
         expected_clips = 1 + len(main_media_list) if has_intro else len(main_media_list)
@@ -1495,6 +1631,7 @@ class FlairyVideoEngine:
                 raw = (mf.ai_analysis or {}).get("english_caption")
                 if isinstance(raw, str) and raw.strip():
                     subtitle_text = raw.strip()[:60]
+            overlay_title = rule_first_clip_title if index == 0 else None
             if mf.file_type == "image":
                 logger.info("이미지 클립 생성 중: [%s] %s", index, mf.file_path)
                 clip_path = self._create_image_clip(
@@ -1505,6 +1642,7 @@ class FlairyVideoEngine:
                     subtitle_text=subtitle_text,
                     clip_duration_sec=float(clip_duration_sec),
                     clip_frames=clip_frames,
+                    overlay_album_title=overlay_title,
                 )
             elif mf.file_type == "video":
                 logger.info("동영상 클립 생성 중: [%s] %s", index, mf.file_path)
@@ -1515,6 +1653,7 @@ class FlairyVideoEngine:
                     use_ai=use_ai,
                     subtitle_text=subtitle_text,
                     clip_duration_sec=float(clip_duration_sec),
+                    overlay_album_title=overlay_title,
                 )
             else:
                 logger.info("지원하지 않는 타입 건너뜀: order_index=%s type=%s", mf.order_index, mf.file_type)

@@ -27,9 +27,13 @@ COLLAGE_FFMPEG_TIMEOUT_SEC = 240
 INTRO_TOP_N_MIN = 2
 INTRO_TOP_N_MAX = 3
 # 화이트 테두리(px), 랜덤 회전 범위(도)
-WHITE_BORDER_PX = 15
-ROTATE_DEG_MIN = -5
-ROTATE_DEG_MAX = 5
+WHITE_BORDER_PX = 20
+ROTATE_DEG_MIN = -7
+ROTATE_DEG_MAX = 7
+# 폴라로이드 그림자(입체감)
+POLAROID_SHADOW_ALPHA = 120
+POLAROID_SHADOW_BLUR = 14
+POLAROID_SHADOW_OFFSET = (10, 12)
 # 인트로 B안: 하단 프로스트 패널 + 메인/서브 타이틀 (재생 컨트롤 위 여백)
 INTRO_PANEL_MARGIN_BOTTOM = 160  # 플레이어 바 대비 상단
 INTRO_PANEL_WIDTH = 980
@@ -119,8 +123,17 @@ def truncate_intro_title_display(
     return "".join(out_chars)
 
 
+def format_ai_intro_title(title: str) -> str:
+    """AI 인트로 상단 제목: 10자 초과 시 말줄임(...) (기획안 len 기준)."""
+    s = (title or "").strip()
+    limit = 10
+    if len(s) > limit:
+        return s[:limit] + "..."
+    return s
+
+
 def _build_intro_top_title_drawtext(display_title: str) -> str:
-    """인트로 콜라주 상단 중앙: Noto Sans KR, 크림 화이트, 검은 외곽선."""
+    """인트로 콜라주 상단 중앙: Noto Sans KR, 크림 화이트, 부드러운 그림자."""
     label = _escape_drawtext_text(display_title) or " "
     font_esc = get_font_path_escaped_for_ffmpeg("NotoSansKR[wght].ttf")
     if font_esc:
@@ -129,7 +142,7 @@ def _build_intro_top_title_drawtext(display_title: str) -> str:
         font_opt = ""
     return (
         f"drawtext=text='{label}':{font_opt}fontsize={INTRO_TITLE_TOP_FONTSIZE}:"
-        f"fontcolor={INTRO_TITLE_TOP_COLOR}:borderw={INTRO_TITLE_TOP_BORDER_W}:bordercolor=black:"
+        f"fontcolor={INTRO_TITLE_TOP_COLOR}:shadowcolor=black@0.6:shadowx=2:shadowy=2:"
         f"x=(w-text_w)/2:y={INTRO_TITLE_TOP_Y}"
     )
 
@@ -261,10 +274,30 @@ def render_collage_clip(
     bg = ImageOps.fit(loaded[0], (CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
     canvas = bg.filter(ImageFilter.GaussianBlur(radius=50))
 
-    # 3) 사진 레이어드 배치 (2~3장: 타이틀 하단부터, 좌우/위2+아래1, 화이트 테두리, 랜덤 회전)
-    cell_max = 620
-    # 타이틀 하단 여유 두고 배치 (y 최소 720)
-    positions = [(120, 720), (580, 720), (350, 1000)]
+    # 3) 폴라로이드 3장 레이어드 배치 (좌 기울임, 우 기울임, 하단 1장) + 그림자 + 오버랩
+    cell_max = 640
+    # 상단 제목 영역(세이프 존) 아래부터 배치
+    positions = [
+        (120, 720),   # left
+        (520, 700),   # right (겹치도록 살짝 위/좌)
+        (320, 1040),  # bottom
+    ]
+
+    def _paste_polaroid(base, polaroid_rgba, x: int, y: int) -> None:
+        """그림자 + 폴라로이드 RGBA를 base(RGB)에 합성."""
+        from PIL import Image, ImageFilter
+        rw, rh = polaroid_rgba.size
+        # shadow: alpha 마스크를 블러 처리
+        shadow = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+        alpha = polaroid_rgba.split()[-1]
+        shadow_mask = alpha.point(lambda a: 255 if a > 0 else 0)
+        shadow.paste((0, 0, 0, POLAROID_SHADOW_ALPHA), (0, 0), shadow_mask)
+        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=POLAROID_SHADOW_BLUR))
+
+        sx = x + POLAROID_SHADOW_OFFSET[0]
+        sy = y + POLAROID_SHADOW_OFFSET[1]
+        base.paste(shadow, (sx, sy), shadow)
+        base.paste(polaroid_rgba, (x, y), polaroid_rgba)
 
     for i, img in enumerate(loaded[: len(positions)]):
         w, h = img.size
@@ -275,31 +308,24 @@ def render_collage_clip(
         img_s = img.resize((nw, nh), Image.Resampling.LANCZOS)
 
         # 화이트 테두리
-        bordered = ImageOps.expand(img_s, border=WHITE_BORDER_PX, fill="white")
+        bordered = ImageOps.expand(img_s, border=WHITE_BORDER_PX, fill="white").convert("RGBA")
 
         # -5~5도 랜덤 회전 (expand=True로 모서리 잘림 방지)
         deg = random.uniform(ROTATE_DEG_MIN, ROTATE_DEG_MAX)
-        rotated = bordered.rotate(
-            deg, expand=True, resample=Image.Resampling.BICUBIC, fillcolor=(255, 255, 255)
-        )
+        # 좌/우는 방향성 부여해 폴라로이드 느낌 강화
+        if i == 0:
+            deg = -abs(deg)
+        elif i == 1:
+            deg = abs(deg)
+        rotated = bordered.rotate(deg, expand=True, resample=Image.Resampling.BICUBIC, fillcolor=(255, 255, 255, 255))
         rw, rh = rotated.size
 
         x, y = positions[i]
         x = max(10, min(CANVAS_W - rw - 10, x))
         y = max(10, min(CANVAS_H - rh - 10, y))
-        canvas.paste(rotated, (x, y))
+        _paste_polaroid(canvas, rotated, x, y)
 
-    # 3.5) B안: 프로스트 글래스 패널 + 메인/서브 타이틀 (사진 위, 하단 안전 영역)
-    try:
-        from app.utils.path_manager import get_fonts_dir
-
-        _draw_frosted_intro_title_overlay(
-            canvas,
-            subtitle or "A Wonderful Life: Highlights",
-            get_fonts_dir(),
-        )
-    except Exception as e:
-        logger.warning("인트로 프로스트 타이틀 실패: %s", e)
+    # 기존 B안(하단 프로스트 패널)은 AI 인트로 고도화에서는 사용하지 않는다.
 
     # 4) 임시 프레임 저장 후 FFmpeg (미세한 줌인 효과 + 페이드 인/아웃)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -311,15 +337,17 @@ def render_collage_clip(
     # 페이드 인(fade=t=in)은 첫 프레임을 검은색에서 시작시키므로 사용하지 않음 — 첫 화면부터 콜라주+타이틀 노출
     fade_out = 0.35
     fade_out_st = max(0.0, duration - fade_out)
-    display_title = truncate_intro_title_display(title)
+    display_title = format_ai_intro_title(title)
     logger.info(
-        "인트로 상단 제목(display_title): %r (max_units=%s, kr≈%s en≈%s)",
+        "AI 인트로 상단 제목(display_title): %r (len<=10)",
         display_title,
-        INTRO_TITLE_MAX_DISPLAY_UNITS,
-        INTRO_TITLE_MAX_UNITS_KR_APPROX,
-        INTRO_TITLE_MAX_UNITS_EN_APPROX,
     )
     draw_title = _build_intro_top_title_drawtext(display_title)
+    # 제목 아래 divider(얇은 선)
+    divider_y = INTRO_TITLE_TOP_Y + int(INTRO_TITLE_TOP_FONTSIZE * 1.2)
+    draw_divider = (
+        f"drawbox=x=(w-520)/2:y={divider_y}:w=520:h=3:color=white@0.45:t=fill"
+    )
     # 저해상도에서 zoompan(픽셀 수 1/4) → bilinear 업스케일 → 인코딩 부하·타임아웃 완화
     # 상단 앨범 제목은 마지막 drawtext로 고정(배경 줌과 무관하게 선명한 한 줄)
     vf_chain = (
@@ -329,7 +357,7 @@ def render_collage_clip(
         f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',"
         f"scale={CANVAS_W}:{CANVAS_H}:flags=bilinear,format=yuv420p,"
         f"fade=t=out:st={fade_out_st:.3f}:d={fade_out},"
-        f"{draw_title}"
+        f"{draw_divider},{draw_title}"
     )
     cmd = [
         "ffmpeg", "-y",
