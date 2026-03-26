@@ -3,12 +3,15 @@
 """
 import json
 import logging
+import math
 import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 try:
@@ -120,10 +123,64 @@ CANVAS_W = 1080
 CANVAS_H = 1920
 CLIP_DURATION_SEC = 3
 CLIP_FPS = 30
+# 이미지 기본 노출(초): 상위 10%는 HIGH_SCORE_IMAGE_SEC
+IMAGE_DURATION_MIN = 5.0
+IMAGE_DURATION_MAX = 6.0
+IMAGE_DURATION_DEFAULT = (IMAGE_DURATION_MIN + IMAGE_DURATION_MAX) / 2.0  # 5.5, 로그에 고정값으로 기록
+HIGH_SCORE_IMAGE_SEC = 10.0
+# xfade 전환(초): 0.8~1.0 권장, Beat 병합과 동일 값 사용
+XFADE_DURATION_MIN = 0.8
+XFADE_DURATION_MAX = 1.0
+XFADE_DURATION_DEFAULT = 0.9
+# 10초 AI 클립: 미세 줌 인크리먼트(프레임당), 최대 줌
+ZOOMPAN_AI_MICRO_INC = 0.0005
+ZOOMPAN_AI_MICRO_MAX_Z = 1.25
 # 스트림 표준화: 포맷·프레임레이트·타임베이스 통일 (yuv420p, 30fps, AVTB)
 VF_CFR_IMAGE = ",format=yuv420p,fps=30,settb=AVTB"
 VF_CFR_VIDEO = ",fps=30,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p"
 CLIP_FRAMES = CLIP_DURATION_SEC * CLIP_FPS  # 90
+
+
+def _score_100_from_media(mf: MediaFile) -> float:
+    a = mf.ai_analysis or {}
+    s = a.get("score_100")
+    if isinstance(s, (int, float)):
+        return float(s)
+    return 0.0
+
+
+def _compute_score100_top10_threshold(main_media_list: list[MediaFile]) -> float | None:
+    """본편 이미지의 score_100 기준 상위 10% 구간(90퍼센타일 이상)."""
+    scores = [_score_100_from_media(mf) for mf in main_media_list if mf.file_type == "image"]
+    if not scores:
+        return None
+    scores.sort()
+    idx = max(0, int(math.ceil(0.9 * len(scores))) - 1)
+    return scores[idx]
+
+
+def _snap_duration_to_beat(dur_sec: float, fade_sec: float, beat_interval_sec: float | None) -> float:
+    """(duration - fade)가 beat 간격 배수가 되도록 스냅. zoompan d와 -t 일치."""
+    if not beat_interval_sec or beat_interval_sec <= 0:
+        frames = max(1, int(round(float(dur_sec) * CLIP_FPS)))
+        return frames / float(CLIP_FPS)
+    f = float(fade_sec)
+    d = max(f + beat_interval_sec, float(dur_sec))
+    effective = d - f
+    snapped = max(beat_interval_sec, round(effective / beat_interval_sec) * beat_interval_sec)
+    out = snapped + f
+    frames = max(1, int(round(out * CLIP_FPS)))
+    return frames / float(CLIP_FPS)
+
+
+def _base_image_duration_sec(mf: MediaFile, threshold: float | None) -> float:
+    if mf.file_type != "image":
+        return float(CLIP_DURATION_SEC)
+    s = _score_100_from_media(mf)
+    if threshold is not None and s >= threshold:
+        return float(HIGH_SCORE_IMAGE_SEC)
+    return float(IMAGE_DURATION_DEFAULT)
+
 
 def _build_zoompan_rule(frames: int) -> str:
     """Rule-based Ken Burns zoompan. z: 1.0→1.2, center-fit, d=frames로 동기화."""
@@ -157,6 +214,35 @@ RULE_BASED_TITLE_Y_EXPR = "h*0.12"  # 상단 10~15% 세이프 존
 OUTPUT_CRF = 25
 USE_HEVC = os.environ.get("USE_HEVC", "").strip().lower() in ("1", "true", "yes")
 _NVENC_AVAILABLE: bool | None = None
+_VIDEOTOOLBOX_AVAILABLE: bool | None = None
+
+
+def _detect_videotoolbox() -> bool:
+    """macOS에서 h264_videotoolbox 런타임 사용 가능 여부(더미 인코딩)."""
+    global _VIDEOTOOLBOX_AVAILABLE
+    if sys.platform != "darwin":
+        return False
+    if _VIDEOTOOLBOX_AVAILABLE is not None:
+        return _VIDEOTOOLBOX_AVAILABLE
+    try:
+        r = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", "nullsrc=s=32x32", "-t", "0.1",
+                "-c:v", "h264_videotoolbox",
+                "-f", "null", "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        _VIDEOTOOLBOX_AVAILABLE = r.returncode == 0
+        if _VIDEOTOOLBOX_AVAILABLE:
+            logger.info("[ENCODER] VideoToolbox runtime check passed. Using h264_videotoolbox.")
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        _VIDEOTOOLBOX_AVAILABLE = False
+        logger.debug("[ENCODER] VideoToolbox check failed: %s", e)
+    return bool(_VIDEOTOOLBOX_AVAILABLE)
 
 
 def _detect_nvenc() -> bool:
@@ -197,33 +283,29 @@ def _detect_nvenc() -> bool:
     return _NVENC_AVAILABLE
 
 
-def get_video_encoding_args() -> list[str]:
-    """모바일 공유용 인코딩 인자. USE_HEVC=1 시 libx265, NVENC 런타임 가능 시 h264_nvenc, 아니면 libx264."""
+def get_h264_encoder_args() -> list[str]:
+    """
+    공통 H.264 인코딩: CRF 25, preset fast(또는 NVENC/VT 대응), yuv420p는 호출부 -pix_fmt.
+    우선순위: h264_nvenc → h264_videotoolbox(Mac) → libx264.
+    """
     if USE_HEVC:
-        return ["-c:v", "libx265", "-crf", "26", "-tag:v", "hvc1"]
+        return ["-c:v", "libx265", "-crf", "26", "-preset", "fast", "-tag:v", "hvc1"]
     if _detect_nvenc():
-        return ["-c:v", "h264_nvenc", "-cq", str(OUTPUT_CRF)]
-    return ["-c:v", "libx264", "-crf", "23", "-preset", "medium"]
+        # NVENC: -cq ≈ CRF, -preset p4 ≈ 빠른 프리셋
+        return ["-c:v", "h264_nvenc", "-cq", str(OUTPUT_CRF), "-preset", "p4"]
+    if _detect_videotoolbox():
+        return ["-c:v", "h264_videotoolbox", "-q:v", "65"]
+    return ["-c:v", "libx264", "-crf", str(OUTPUT_CRF), "-preset", "fast"]
+
+
+def get_video_encoding_args() -> list[str]:
+    """AI/병합 클립용 인코딩 인자."""
+    return get_h264_encoder_args()
 
 
 def get_rule_based_video_encoding_args() -> list[str]:
-    """Rule-based 렌더 고정 인코딩: libx264 high@4.2, 30fps, 5~8Mbps 대역."""
-    return [
-        "-c:v",
-        "libx264",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "4.2",
-        "-preset",
-        "medium",
-        "-b:v",
-        "6M",
-        "-maxrate",
-        "8M",
-        "-bufsize",
-        "12M",
-    ]
+    """Rule-based 클립·병합: CRF 기반으로 AI와 동일 선택기 사용."""
+    return get_h264_encoder_args()
 
 
 def _write_typewriter_ass(text: str, out_path: Path, duration_sec: float = 3.0) -> None:
@@ -380,6 +462,29 @@ class FlairyVideoEngine:
         x_expr = f"max(0,min(iw*{cx:.6f}-(iw/zoom/2),iw-iw/zoom))"
         y_expr = f"max(0,min(ih*{cy:.6f}-(ih/zoom/2),ih-ih/zoom))"
         logger.info("[AI Zoompan] subject center norm=(%.4f, %.4f) d=%d", cx, cy, frames)
+        return (
+            f"zoompan=z='{zoom_expr}':"
+            f"d={frames}:s={CANVAS_W}x{CANVAS_H}:"
+            f"x='{x_expr}':y='{y_expr}':fps={CLIP_FPS}"
+        )
+
+    def _build_zoompan_ai_micro(self, center_x_norm: float, center_y_norm: float, clip_frames: int) -> str:
+        """
+        10초(300f@30) 고노출 이미지: 아주 느린 줌인 + 피사체 중심 패닝. 경계 clamp.
+        z: zoom+Z_INC per frame (울렁임 방지), d=clip_frames.
+        """
+        cx = max(0.0, min(1.0, float(center_x_norm)))
+        cy = max(0.0, min(1.0, float(center_y_norm)))
+        frames = max(1, int(clip_frames))
+        z_inc = ZOOMPAN_AI_MICRO_INC
+        z_max = ZOOMPAN_AI_MICRO_MAX_Z
+        zoom_expr = f"min(zoom+{z_inc},{z_max})"
+        x_expr = f"max(0,min(iw*{cx:.6f}-(iw/zoom/2),iw-iw/zoom))"
+        y_expr = f"max(0,min(ih*{cy:.6f}-(ih/zoom/2),ih-ih/zoom))"
+        logger.info(
+            "[AI Zoompan micro] subject center norm=(%.4f, %.4f) d=%d z_inc=%s",
+            cx, cy, frames, z_inc,
+        )
         return (
             f"zoompan=z='{zoom_expr}':"
             f"d={frames}:s={CANVAS_W}x{CANVAS_H}:"
@@ -599,7 +704,10 @@ class FlairyVideoEngine:
                 )
                 cx = focus_x / float(CANVAS_W)
                 cy = focus_y_safe / float(CANVAS_H)
-                zoompan = self._build_zoompan_ai_ease(cx, cy, clip_frames)
+                if clip_frames >= 300:
+                    zoompan = self._build_zoompan_ai_micro(cx, cy, clip_frames)
+                else:
+                    zoompan = self._build_zoompan_ai_ease(cx, cy, clip_frames)
                 return rot_prefix + fill_crop + "," + zoompan + "[vid]"
             return rot_prefix + fill_crop + "," + _build_zoompan_ai_fallback(clip_frames) + "[vid]"
 
@@ -796,11 +904,13 @@ class FlairyVideoEngine:
         use_ai: bool = False,
         subtitle_text: str | None = None,
         clip_duration_sec: float = CLIP_DURATION_SEC,
+        clip_frames: int | None = None,
         overlay_album_title: str | None = None,
     ) -> Path:
         """
         동영상 MediaFile을 9:16(1080x1920) 레이아웃으로 정규화.
-        use_ai=True이면 ai_analysis subject_box 기반 포커싱 적용.
+        원본 길이 100% 사용. 2초 미만이면 0.5배속(atempo/setpts)으로 출력 길이 2배.
+        clip_duration_sec: 출력 길이(스냅 후). clip_frames: zoompan d용 원본 타임라인 프레임 수.
         """
         input_path = self.base_dir / media_file.file_path
         if not input_path.is_file():
@@ -812,16 +922,18 @@ class FlairyVideoEngine:
 
         src_d = self._get_video_duration_sec(input_path)
         if src_d is None or src_d <= 0:
-            src_d = float(clip_duration_sec)
-        clip_dur = min(float(clip_duration_sec), max(0.04, float(src_d)))
-        sub_dur = min(clip_dur, float(clip_duration_sec))
-        clip_frames = max(1, int(round(float(clip_dur) * CLIP_FPS)))
+            src_d = 3.0
+        src_d = max(0.04, float(src_d))
+        slow = src_d < 2.0
+        clip_dur_out = float(clip_duration_sec)
+        sub_dur = clip_dur_out
+        zm_frames = clip_frames if clip_frames is not None else max(1, int(round(src_d * CLIP_FPS)))
 
         vf = self._build_916_vf(
             input_path,
             media_file=media_file,
             use_ai=use_ai,
-            clip_frames=clip_frames,
+            clip_frames=zm_frames,
         )
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
@@ -838,18 +950,15 @@ class FlairyVideoEngine:
                     vf += "," + self._build_subtitles_filter(ass_path)
             if overlay_album_title:
                 vf += "," + self._build_rule_based_title_overlay_filters(overlay_album_title)
-            # 영상·오디오 동일 길이: trim/atrim 후 CFR (이미지 클립과 동일 max 길이)
-            vf += (
-                f",trim=start=0:duration={clip_dur:.3f},setpts=PTS-STARTPTS"
-                + VF_CFR_VIDEO
-                + "[vid]"
-            )
-        # 오디오: 길이 고정 → loudnorm → 다시 동일 길이로 자름 (싱크 유지)
-        af = (
-            f"atrim=start=0:duration={clip_dur:.3f},asetpts=PTS-STARTPTS,"
-            f"loudnorm=I=-16:TP=-1.5:LRA=11,"
-            f"atrim=start=0:duration={clip_dur:.3f},asetpts=PTS-STARTPTS"
-        )
+            vf += f",trim=start=0:duration={src_d:.3f},setpts=PTS-STARTPTS"
+            if slow:
+                vf += ",setpts=2*PTS-STARTPTS"
+            vf += f",fps={CLIP_FPS},settb=AVTB,format=yuv420p"
+        # 오디오: 원본 구간 → loudnorm → 2초 미만이면 0.5배속(길이 2배)
+        af = f"atrim=start=0:duration={src_d:.3f},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11"
+        if slow:
+            af += ",atempo=0.5"
+        af += f",atrim=start=0:duration={clip_dur_out:.3f},asetpts=PTS-STARTPTS"
         encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
         cmd = [
             "ffmpeg",
@@ -863,7 +972,7 @@ class FlairyVideoEngine:
             "-af",
             af,
             "-t",
-            f"{clip_dur:.3f}",
+            f"{clip_dur_out:.3f}",
             "-shortest",
             "-r",
             str(CLIP_FPS),
@@ -879,9 +988,11 @@ class FlairyVideoEngine:
             str(out_path),
         ]
         logger.info(
-            "동영상 클립 정규화 (dur=%.3fs src=%.3fs): %s",
-            clip_dur,
+            "동영상 클립 정규화 (out=%.3fs src=%.3fs slow=%s zm_frames=%d): %s",
+            clip_dur_out,
             src_d,
+            slow,
+            zm_frames,
             " ".join(cmd),
         )
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -1146,6 +1257,51 @@ class FlairyVideoEngine:
             logger.debug("duration 추출 예외 %s: %s", video_path.name, e)
             return 0.0
 
+    def _accumulate_timeline_segments(
+        self,
+        segments_in_order: list[dict[str, Any]],
+        fade_sec: float,
+    ) -> list[dict[str, Any]]:
+        """xfade 겹침을 반영한 누적 start/end(초)."""
+        t = 0.0
+        out: list[dict[str, Any]] = []
+        n = len(segments_in_order)
+        for i, seg in enumerate(segments_in_order):
+            dur = float(seg.get("duration_sec", 0.0))
+            start = t
+            end = t + dur
+            row = dict(seg)
+            row["start_sec"] = round(start, 4)
+            row["end_sec"] = round(end, 4)
+            out.append(row)
+            if i < n - 1:
+                t = end - fade_sec
+        return out
+
+    def _write_render_timeline_json(
+        self,
+        segments_in_order: list[dict[str, Any]],
+        fade_sec: float,
+    ) -> Path | None:
+        """검증·추후 나레이션(TTS) 구간별 BGM 덕킹 연동용."""
+        try:
+            self.final_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.warning("[Timeline] final_dir 실패: %s", e)
+            return None
+        path = self.final_dir / "render_timeline.json"
+        payload = {
+            "fade_sec": fade_sec,
+            "segments": self._accumulate_timeline_segments(segments_in_order, fade_sec),
+        }
+        try:
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info("[Timeline] wrote %s", path)
+            return path
+        except OSError as e:
+            logger.warning("[Timeline] write failed: %s", e)
+            return None
+
     def _get_cinematic_fontfile_opt(self) -> str:
         """시네마틱 자막용 fontfile= 옵션 (static/fonts 우선, FFmpeg 이스케이프 적용)."""
         for name in (CINEMATIC_FONT_PRIMARY, CINEMATIC_FONT_FALLBACK):
@@ -1318,14 +1474,17 @@ class FlairyVideoEngine:
         self._append_log("BGM 더킹 합성 중")
         duration = self._get_video_duration_sec(video_path)
         fade_st = max(0.0, duration - 2.0)
-        duck_threshold = float(os.environ.get("DUCK_THRESHOLD", "0.15"))
-        duck_threshold = max(0.1, min(0.2, duck_threshold))
-        # 더킹: 나레이션(nav)이 들어오면 bgm을 감소, release 동안 완만히 복구
+        duck_threshold = float(os.environ.get("DUCK_THRESHOLD", "0.12"))
+        duck_threshold = max(0.08, min(0.2, duck_threshold))
+        # 더킹: 사이드체인(nav)이 크면 BGM을 강하게 눌러 동영상 원음 우선(목표 ~-14dB / 약 20%).
+        # attack/release(ms 단위)로 페이드 느낌 조절. 추후 TTS 나레이션 트랙이 생기면
+        # render_timeline의 narration 구간에 volume=0.5 등 2단계 덕킹을 별도 체인으로 추가 가능.
         filter_complex = (
-            "[1:a]volume=1.0[bgm_in];"
+            "[1:a]volume=0.9[bgm_in];"
             "[0:a]volume=1.0[nav_in];"
-            f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=200[bgm_ducked];"
-            "[bgm_ducked][nav_in]amix=inputs=2:duration=first[audio_out]"
+            # Critical: FFmpeg sidechaincompress ratio max limit is 20.0
+            f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_ducked];"
+            "[bgm_ducked][nav_in]amix=inputs=2:duration=first:normalize=0[audio_out]"
         )
         if fade_st > 0:
             filter_complex += f";[audio_out]afade=t=out:st={fade_st:.2f}:d=2[audio_out2]"
@@ -1506,15 +1665,13 @@ class FlairyVideoEngine:
             media_files = self._order_media_for_narrative(media_files, saved_narrative)
             logger.info("---------- STARTING AI RENDERING MODE (9:16) ----------")
 
-        # Day3 Beat-sync 기반 클립 길이 보정 (BGM BPM → beat interval)
-        # - 전환 시작점이 음악의 박자에 정렬되도록 clip_duration을 (clip_duration - fade)가 beat grid 배수가 되게 스냅
-        # - merge 단계에서 fade_duration도 동일하게 override하여 타임라인 일관성 유지
+        # BPM → beat interval (클립별 길이는 아래에서 개별 스냅)
         beat_interval_sec: float | None = None
         selected_bgm_path: Path | None = None
         selected_bpm: float | None = None
-        beat_fade_duration_sec = 0.5
-        clip_duration_sec = float(CLIP_DURATION_SEC)
-        clip_frames = int(CLIP_FRAMES)
+        beat_fade_duration_sec = max(
+            XFADE_DURATION_MIN, min(XFADE_DURATION_MAX, XFADE_DURATION_DEFAULT)
+        )
         try:
             emotion_for_bgm = get_dominant_emotion(media_files)
             picked = pick_bgm_by_emotion(emotion_for_bgm, self.base_dir)
@@ -1522,25 +1679,15 @@ class FlairyVideoEngine:
             selected_bpm = float(picked.get("bpm") or 0.0)
             if selected_bpm and selected_bpm > 0:
                 beat_interval_sec = 60.0 / selected_bpm
-                effective = clip_duration_sec - beat_fade_duration_sec
-                effective_snapped = max(
-                    beat_interval_sec,
-                    round(effective / beat_interval_sec) * beat_interval_sec,
-                )
-                clip_duration_sec = effective_snapped + beat_fade_duration_sec
-                clip_frames = max(1, int(round(clip_duration_sec * CLIP_FPS)))
-                # fps=30 기준으로 프레임 정수화한 뒤 duration을 다시 보정해 zoompan(d=frames)과 -t가 일치하도록 함
-                clip_duration_sec = clip_frames / float(CLIP_FPS)
                 logger.info(
-                    "[BeatSync] emotion=%s bpm=%.2f beat=%.5fs clip_duration=%.3fs clip_frames=%d",
+                    "[BeatSync] emotion=%s bpm=%.2f beat_interval=%.5fs fade=%.3fs",
                     emotion_for_bgm,
                     selected_bpm,
                     beat_interval_sec,
-                    clip_duration_sec,
-                    clip_frames,
+                    beat_fade_duration_sec,
                 )
                 self._append_log(
-                    f"[BeatSync] bpm={selected_bpm:.2f} beat_interval={beat_interval_sec:.5f} clip_duration={clip_duration_sec:.3f}"
+                    f"[BeatSync] bpm={selected_bpm:.2f} beat_interval={beat_interval_sec:.5f} xfade={beat_fade_duration_sec:.3f}"
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("BeatSync 준비 실패(무시): %s", e)
@@ -1554,6 +1701,42 @@ class FlairyVideoEngine:
             # AI 인트로 고도화(폴라로이드 콜라주)에서는 2분할 인트로를 사용하지 않는다.
             split_intro_pair = []
         main_media_list = list(media_files)  # 유니크 리스트 전체(인트로와 중복 허용)
+
+        score_threshold = _compute_score100_top10_threshold(main_media_list)
+        if score_threshold is not None:
+            logger.info(
+                "[Highlight] score_100 top-10%% threshold=%.1f (>= → %.1fs image hold)",
+                score_threshold,
+                HIGH_SCORE_IMAGE_SEC,
+            )
+        media_duration_sec: dict[int, float] = {}
+        media_zoom_frames: dict[int, int] = {}
+        for mf in main_media_list:
+            if mf.file_type == "image":
+                base = _base_image_duration_sec(mf, score_threshold)
+                d = _snap_duration_to_beat(base, beat_fade_duration_sec, beat_interval_sec)
+                media_duration_sec[mf.id] = d
+            elif mf.file_type == "video":
+                vp = self.base_dir / mf.file_path
+                src_d = self._get_video_duration_sec(vp)
+                if src_d is None or src_d <= 0:
+                    src_d = 3.0
+                src_d = max(0.04, float(src_d))
+                raw_out = src_d * 2.0 if src_d < 2.0 else src_d
+                d = _snap_duration_to_beat(raw_out, beat_fade_duration_sec, beat_interval_sec)
+                media_duration_sec[mf.id] = d
+                media_zoom_frames[mf.id] = max(1, int(round(src_d * CLIP_FPS)))
+
+        intro_clip_duration_sec = _snap_duration_to_beat(
+            IMAGE_DURATION_DEFAULT, beat_fade_duration_sec, beat_interval_sec
+        )
+        if intro_group:
+            intro_clip_duration_sec = _snap_duration_to_beat(
+                _base_image_duration_sec(intro_group[0], score_threshold),
+                beat_fade_duration_sec,
+                beat_interval_sec,
+            )
+
         has_intro = bool(split_intro_pair) or bool(intro_group)
         expected_clips = 1 + len(main_media_list) if has_intro else len(main_media_list)
         logger.info(
@@ -1564,6 +1747,7 @@ class FlairyVideoEngine:
 
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         clips: list[Path] = []
+        clip_timeline: list[dict[str, Any]] = []
         intro_clip_path: Path | None = None
 
         if use_ai and not intro_group and not split_intro_pair:
@@ -1576,10 +1760,17 @@ class FlairyVideoEngine:
                     split_intro_pair,
                     self.base_dir,
                     split_intro_path,
-                    duration_sec=float(clip_duration_sec),
+                    duration_sec=float(intro_clip_duration_sec),
                 )
                 clips.append(split_intro_path)
                 intro_clip_path = split_intro_path
+                clip_timeline.append(
+                    {
+                        "kind": "intro_split",
+                        "duration_sec": float(intro_clip_duration_sec),
+                        "media_ids": [m.id for m in split_intro_pair],
+                    }
+                )
                 self._append_log("인트로 2분할 콜라주 생성 완료")
             except Exception as e:
                 logger.warning("인트로 2분할 콜라주 실패, 기본 콜라주로 폴백: %s", e)
@@ -1600,10 +1791,17 @@ class FlairyVideoEngine:
                     summary_text=summary_intro or "함께한 순간",
                     title=intro_title,
                     subtitle="A Wonderful Life: Highlights",
-                    duration_sec=float(clip_duration_sec),
+                    duration_sec=float(intro_clip_duration_sec),
                 )
                 clips.append(intro_path)
                 intro_clip_path = intro_path
+                clip_timeline.append(
+                    {
+                        "kind": "intro",
+                        "duration_sec": float(intro_clip_duration_sec),
+                        "media_ids": [m.id for m in intro_group],
+                    }
+                )
                 self._append_log("인트로 콜라주 생성 완료")
             except Exception as e:
                 logger.warning("인트로 콜라주 실패, 스킵: %s", e)
@@ -1632,33 +1830,45 @@ class FlairyVideoEngine:
                 if isinstance(raw, str) and raw.strip():
                     subtitle_text = raw.strip()[:60]
             overlay_title = rule_first_clip_title if index == 0 else None
+            d_sec = float(media_duration_sec.get(mf.id, CLIP_DURATION_SEC))
+            c_frames = max(1, int(round(d_sec * CLIP_FPS)))
             if mf.file_type == "image":
-                logger.info("이미지 클립 생성 중: [%s] %s", index, mf.file_path)
+                logger.info("이미지 클립 생성 중: [%s] %s dur=%.3fs", index, mf.file_path, d_sec)
                 clip_path = self._create_image_clip(
                     mf,
                     index,
                     caption,
                     use_ai=use_ai,
                     subtitle_text=subtitle_text,
-                    clip_duration_sec=float(clip_duration_sec),
-                    clip_frames=clip_frames,
+                    clip_duration_sec=d_sec,
+                    clip_frames=c_frames,
                     overlay_album_title=overlay_title,
                 )
             elif mf.file_type == "video":
-                logger.info("동영상 클립 생성 중: [%s] %s", index, mf.file_path)
+                logger.info("동영상 클립 생성 중: [%s] %s dur=%.3fs", index, mf.file_path, d_sec)
+                zm = int(media_zoom_frames.get(mf.id, c_frames))
                 clip_path = self._create_video_clip(
                     mf,
                     index,
                     caption,
                     use_ai=use_ai,
                     subtitle_text=subtitle_text,
-                    clip_duration_sec=float(clip_duration_sec),
+                    clip_duration_sec=d_sec,
+                    clip_frames=zm,
                     overlay_album_title=overlay_title,
                 )
             else:
                 logger.info("지원하지 않는 타입 건너뜀: order_index=%s type=%s", mf.order_index, mf.file_type)
                 continue
             clips.append(clip_path)
+            clip_timeline.append(
+                {
+                    "kind": mf.file_type,
+                    "media_id": mf.id,
+                    "duration_sec": d_sec,
+                    "score_100": _score_100_from_media(mf),
+                }
+            )
 
         # 아웃로: 인트로 콜라주 첫 프레임만 정적으로 표시 (효과 없음)
         outro_added = False
@@ -1667,6 +1877,7 @@ class FlairyVideoEngine:
             try:
                 self._make_static_clip_from_video(intro_clip_path, outro_path, duration_sec=1.0)
                 clips.append(outro_path)
+                clip_timeline.append({"kind": "outro", "duration_sec": 1.0})
                 outro_added = True
                 self._append_log("아웃로: 인트로 콜라주 화면 정적 표시")
             except Exception as e:
@@ -1710,6 +1921,7 @@ class FlairyVideoEngine:
         overlay_path = merged
         if not overlay_path.is_file():
             raise FileNotFoundError(f"BGM 입력 영상 없음: {overlay_path}. 병합/오버레이 단계 확인 필요.")
+        self._write_render_timeline_json(clip_timeline, beat_fade_duration_sec)
         final_path = self._add_bgm(
             overlay_path,
             media_files=media_files if use_ai else None,
