@@ -96,7 +96,7 @@ window.initAlbumViewer = function () {
       ? ""
       : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" decoding="async" />';
     var posStyle = objectPositionStyle(styles || {});
-    var fitCls = styles && styles.object_fit === "contain" ? "contain" : "cover";
+    var fitCls = "contain";
     var mediaPart = isVideo
       ? '<div class="slot-video-stack">' +
         '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
@@ -137,7 +137,7 @@ window.initAlbumViewer = function () {
         '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
-      : '<img class="slot-img cover" src="' + url + '" alt="" loading="lazy" decoding="async" />';
+      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" decoding="async" />';
     var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(title || "") + "</div>";
     return (
       '<div class="media-frame album-media-container cover-front">' +

@@ -22,9 +22,9 @@ BGM_BPM_MAP: dict[str, dict[str, object]] = {
     # Default
     "default": {"paths": [DEFAULT_BGM], "bpm": 100},
     # Joy / Energetic
-    "joy": {"paths": [JOY_BGM], "bpm": 128},
-    "excited": {"paths": [JOY_BGM], "bpm": 132},
-    "energetic": {"paths": [JOY_BGM], "bpm": 128},
+    "joy": {"paths": [JOY_BGM], "bpm": 120},
+    "excited": {"paths": [JOY_BGM], "bpm": 120},
+    "energetic": {"paths": [JOY_BGM], "bpm": 120},
     # Calm / Peaceful / Romantic
     "calm": {"paths": [PEACEFUL_BGM], "bpm": 90},
     "peaceful": {"paths": [PEACEFUL_BGM], "bpm": 88},

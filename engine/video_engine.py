@@ -1422,6 +1422,28 @@ class FlairyVideoEngine:
             f"x=(w-text_w)/2:y=h-text_h-{EMO_CAPTION_Y_OFFSET}"
         )
 
+    def _resolve_narration_audio_path(self) -> Path | None:
+        """
+        나레이션(TTS) 단일 오디오가 final 또는 temp에 있으면 반환.
+        파이프라인에서 해당 파일을 두면 2단계 덕킹(영상 원음 → 나레이션)이 활성화된다.
+        """
+        names = (
+            "narration.mp3",
+            "narration.wav",
+            "narration.m4a",
+            "narration.aac",
+            "tts_narration.mp3",
+            "narration_track.wav",
+            "narration_track.mp3",
+        )
+        for base in (self.final_dir, self.temp_dir):
+            for name in names:
+                p = base / name
+                if p.is_file():
+                    logger.info("나레이션 오디오 감지: %s", p)
+                    return p
+        return None
+
     def _add_bgm(
         self,
         video_path: Path,
@@ -1470,37 +1492,80 @@ class FlairyVideoEngine:
             logger.info("최종 출력 (BGM 없음): %s", out_path)
             return out_path
 
-        logger.info("BGM 더킹 합성 중: video=%s bgm=%s bpm=%s", video_path, bgm_path, bpm)
+        narr_path = self._resolve_narration_audio_path()
+        logger.info(
+            "BGM 더킹 합성 중: video=%s bgm=%s bpm=%s narration=%s",
+            video_path,
+            bgm_path,
+            bpm,
+            narr_path,
+        )
         self._append_log("BGM 더킹 합성 중")
         duration = self._get_video_duration_sec(video_path)
         fade_st = max(0.0, duration - 2.0)
         duck_threshold = float(os.environ.get("DUCK_THRESHOLD", "0.12"))
         duck_threshold = max(0.08, min(0.2, duck_threshold))
-        # 더킹: 사이드체인(nav)이 크면 BGM을 강하게 눌러 동영상 원음 우선(목표 ~-14dB / 약 20%).
-        # attack/release(ms 단위)로 페이드 느낌 조절. 추후 TTS 나레이션 트랙이 생기면
-        # render_timeline의 narration 구간에 volume=0.5 등 2단계 덕킹을 별도 체인으로 추가 가능.
-        filter_complex = (
-            "[1:a]volume=0.9[bgm_in];"
-            "[0:a]volume=1.0[nav_in];"
-            # Critical: FFmpeg sidechaincompress ratio max limit is 20.0
-            f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_ducked];"
-            "[bgm_ducked][nav_in]amix=inputs=2:duration=first:normalize=0[audio_out]"
-        )
+        # 1단: 영상 원음(nav) 대비 BGM 강하게 누름(목표 ~-14dB, ratio=20 상한).
+        # 2단: 나레이션(TTS) 트랙이 있으면 추가로 약하게 누름(목표 ~-6dB 상대, ratio 낮게).
+        narr_duck_threshold = float(os.environ.get("NARR_DUCK_THRESHOLD", "0.06"))
+        narr_duck_threshold = max(0.04, min(0.15, narr_duck_threshold))
+        narr_duck_ratio = float(os.environ.get("NARR_DUCK_RATIO", "4"))
+        narr_duck_ratio = max(1.0, min(20.0, narr_duck_ratio))
+
+        if narr_path is not None:
+            filter_complex = (
+                "[1:a]volume=0.9[bgm_in];"
+                "[0:a]volume=1.0[nav_in];"
+                "[2:a]volume=1.0[narr_in];"
+                f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_d1];"
+                f"[bgm_d1][narr_in]sidechaincompress=threshold={narr_duck_threshold}:ratio={narr_duck_ratio}:attack=12:release=220[bgm_d2];"
+                "[bgm_d2][nav_in][narr_in]amix=inputs=3:duration=longest:normalize=0[audio_out]"
+            )
+            inputs = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-i",
+                str(bgm_path),
+                "-i",
+                str(narr_path),
+            ]
+        else:
+            filter_complex = (
+                "[1:a]volume=0.9[bgm_in];"
+                "[0:a]volume=1.0[nav_in];"
+                f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_ducked];"
+                "[bgm_ducked][nav_in]amix=inputs=2:duration=first:normalize=0[audio_out]"
+            )
+            inputs = ["ffmpeg", "-y", "-i", str(video_path), "-i", str(bgm_path)]
+
         if fade_st > 0:
             filter_complex += f";[audio_out]afade=t=out:st={fade_st:.2f}:d=2[audio_out2]"
             map_audio = "[audio_out2]"
         else:
             map_audio = "[audio_out]"
 
-        cmd = [
-            "ffmpeg", "-y", "-i", str(video_path), "-i", str(bgm_path),
-            "-filter_complex", filter_complex,
-            "-map", "0:v", "-map", map_audio,
+        cmd = inputs + [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "0:v",
+            "-map",
+            map_audio,
             "-shortest",
-            "-movflags", "+faststart",
-            "-metadata", "title=Flairy Memoir",
-            "-metadata", "artist=Flairy v4.0",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+            "-movflags",
+            "+faststart",
+            "-metadata",
+            "title=Flairy Memoir",
+            "-metadata",
+            "artist=Flairy v4.0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
             str(out_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)

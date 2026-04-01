@@ -3,6 +3,8 @@
 <style>
   :root {
     --a4-ratio: 1.414;
+    --p-top: 9.45px;
+    --p-bottom: calc(var(--p-top) * 1.5);
   }
   /* v3 스타일: 문서 흐름 레이아웃, 높이는 콘텐츠에 맡김 */
   .album-viewer-layout {
@@ -221,14 +223,19 @@
     background: #ffffff;
   }
   .page-content {
-    padding: 27px 19px 54px 19px;
+    padding-top: var(--p-top);
+    padding-right: 19px;
+    padding-bottom: var(--p-bottom);
+    padding-left: 19px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     min-height: 456px;
+    height: 100%;
     box-sizing: border-box;
     transform-style: preserve-3d;
+    background-color: #ffffff;
   }
   .spread-row .page-content {
     flex-direction: column;
@@ -237,7 +244,11 @@
   /* 공통: 모바일·3D 공용 미디어 컨테이너 (9:16, overflow, 캡션 기준) */
   .album-media-container {
     aspect-ratio: 9 / 16;
+    height: calc(100% - var(--p-top) - var(--p-bottom));
+    width: auto;
     max-width: 100%;
+    margin: 0 auto;
+    background-color: #ffffff;
     overflow: hidden;
     position: relative;
   }
@@ -248,8 +259,10 @@
   /* 9:16 전용 프레임: 황금비율 가상 액자 + 종이/사진 경계 (Task 2·3) */
   .media-frame {
     aspect-ratio: 9 / 16;
-    width: 100%;
+    height: calc(100% - var(--p-top) - var(--p-bottom));
+    width: auto;
     max-width: 100%;
+    margin: 0 auto;
     position: relative;
     overflow: hidden;
     contain: paint;
@@ -263,12 +276,11 @@
 
   /* Floating Gallery (Portrait only): 프레임은 종이(배경) 역할 */
   .media-frame.is-portrait {
-    overflow: visible !important; /* 그림자 잘림 방지 */
+    overflow: hidden !important;
     border: none !important;
-    box-shadow: none !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.05) !important;
     background: #ffffff !important;
-    --paper-pad: 12px;
-    padding: var(--paper-pad) !important;
+    padding: 0 !important;
   }
   /* 블러 배경: 세로/가로 모두 적용, A4 여백 침범 방지 */
   .slot-blur {
@@ -305,7 +317,7 @@
     border-radius: inherit;
   }
   .media-frame.is-portrait .slot-video-stack {
-    overflow: visible;
+    overflow: hidden;
   }
   .media-frame.is-landscape .slot-blur-poster {
     position: absolute;
@@ -374,7 +386,7 @@
     visibility: hidden !important;
   }
 
-  /* 3D 리프·모바일 스프레드: 줌/팬 대신 정적 cover + object-position (플로팅 갤러리 변형 무력화) */
+  /* 3D 리프·모바일: 세로도 잘리지 않게 contain (높이 기준 9:16 슬롯과 정합) */
   #bookBody .leaf-face .media-frame.is-portrait .slot-img,
   #bookBody .leaf-face .media-frame.is-portrait .slot-video,
   .page-display .media-frame.is-portrait .slot-img,
@@ -383,26 +395,23 @@
     width: 100% !important;
     height: 100% !important;
     border-radius: 4px !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     object-position: center center;
     transform: none !important;
     box-shadow: none !important;
     border: none !important;
   }
-  /* Floating Gallery (Portrait only): 인화지(미디어) 자체에 depth 부여 */
   .media-frame.is-portrait .slot-img,
   .media-frame.is-portrait .slot-video {
-    inset: var(--paper-pad, 0) !important;
-    width: auto !important;
-    height: auto !important;
-    border-radius: 6px !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
-    box-shadow:
-      0 14px 30px rgba(0, 0, 0, 0.12),
-      0 6px 14px rgba(0, 0, 0, 0.06) !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 4px !important;
+    border: none !important;
+    box-shadow: none !important;
     object-fit: contain !important;
     object-position: center center !important;
-    transform: translateZ(0) scale(0.98) !important;
+    transform: none !important;
   }
   .slot-caption {
     position: relative;
@@ -492,7 +501,10 @@
     justify-content: center;
   }
   .spread-half .page-content {
-    padding: 35px 25px 70px 25px;
+    padding-top: var(--p-top);
+    padding-right: 19px;
+    padding-bottom: var(--p-bottom);
+    padding-left: 19px;
     box-sizing: border-box;
     flex: 1;
     width: 100%;
@@ -522,9 +534,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 27px 19px 54px 19px;
+    justify-content: flex-start;
+    padding-top: var(--p-top);
+    padding-right: 19px;
+    padding-bottom: var(--p-bottom);
+    padding-left: 19px;
     box-sizing: border-box;
+    height: 100%;
+    background-color: #ffffff;
   }
   /* 앞표지 전용: 레거시로 내지용 .slot-blur를 숨기던 규칙 — 앞표지는 .cover-bg-blur 사용 */
   .spread-half-cover-right .slot-blur {
@@ -533,7 +550,7 @@
   /* 앞표지(cover-front): 배경 레이어 — 블러·확대로 portrait 프레임의 여백을 엠비언트로 채움 */
   .media-frame.album-media-container.cover-front {
     overflow: hidden !important;
-    background: #0a0a0a;
+    background: #ffffff;
   }
   /* 앞표지는 내지용 is-portrait 플로팅 액자 규칙을 쓰지 않음 */
   .media-frame.album-media-container.cover-front.is-portrait .slot-img,
@@ -541,12 +558,17 @@
     inset: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    border-radius: 0 !important;
+    border-radius: 4px !important;
     border: none !important;
     box-shadow: none !important;
     transform: none !important;
   }
-  .album-media-container.cover-front .cover-bg-blur {
+  /* 세로 표지: 무잘림·흰 여백. 가로 표지: 블러 엠비언트 + 전경 contain */
+  .media-frame.album-media-container.cover-front.is-portrait .cover-bg-blur {
+    display: none !important;
+  }
+  .album-media-container.cover-front.is-landscape .cover-bg-blur {
+    display: block;
     position: absolute;
     inset: 0;
     width: 100%;
@@ -568,7 +590,13 @@
     opacity: 0.65;
   }
   .spread-half-cover-right .media-frame {
+    aspect-ratio: 9 / 16;
+    height: calc(100% - var(--p-top) - var(--p-bottom));
+    width: auto;
     max-width: 100%;
+    min-width: 0;
+    margin: 0 auto;
+    flex-shrink: 0;
   }
   .cover-title-overlay {
     position: absolute;
@@ -578,8 +606,8 @@
     transform: translateY(-50%);
     text-align: center;
     padding: 0 1rem;
-    color: #fff;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    color: #1a1a1a;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.9), 0 2px 12px rgba(0,0,0,0.15);
     font-size: 1.75rem;
     letter-spacing: 0.15em;
     font-family: "Playfair Display", "Noto Serif KR", serif;
@@ -587,16 +615,25 @@
     z-index: 20;
     pointer-events: none;
   }
+  .media-frame.album-media-container.cover-front.is-landscape .cover-title-overlay {
+    color: #fff;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
   .cover-footer {
-    min-height: 54px;
+    min-height: 0;
+    height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
   /* 뒷표지: Silver Gray 단색, 본문과 동일 규격·여백 */
   .cover-back {
     background: #F8FAFC;
-    padding: 27px 19px 54px 19px;
+    padding-top: var(--p-top);
+    padding-right: 19px;
+    padding-bottom: var(--p-bottom);
+    padding-left: 19px;
     min-height: 456px;
     box-sizing: border-box;
     position: relative;
@@ -799,6 +836,7 @@
     position: absolute;
     inset: 0;
     pointer-events: auto;
+    transform-style: preserve-3d;
   }
   .leaf.flipped {
     transform: rotateY(-180deg) translateZ(0.1px);
@@ -834,7 +872,10 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 27px 19px 54px 19px;
+    padding-top: var(--p-top);
+    padding-right: 19px;
+    padding-bottom: var(--p-bottom);
+    padding-left: 19px;
     box-sizing: border-box;
     position: relative;
     z-index: 5;
@@ -845,11 +886,12 @@
   #bookBody .leaf-face .media-frame,
   #bookBody .leaf-face .media-frame-placeholder {
     aspect-ratio: 9 / 16;
-    width: 100%;
+    height: calc(100% - var(--p-top) - var(--p-bottom));
+    width: auto;
     max-width: 100%;
-    max-height: 100%;
     min-width: 0;
-    flex-shrink: 1;
+    flex-shrink: 0;
+    margin: 0 auto;
     overflow: hidden;
     display: flex;
     justify-content: center;
