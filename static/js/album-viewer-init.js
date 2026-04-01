@@ -89,6 +89,13 @@ window.initAlbumViewer = function () {
     return div.innerHTML;
   }
 
+  function formatRuleBasedCoverTitle(title) {
+    var t = String(title || "").trim();
+    var limit = 10;
+    if (t.length > limit) return t.slice(0, limit) + "...";
+    return t;
+  }
+
   function slotHtml(mediaPath, styles, caption, fileType) {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
@@ -138,7 +145,8 @@ window.initAlbumViewer = function () {
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
       : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" decoding="async" />';
-    var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(title || "") + "</div>";
+    var overlayTitle = formatRuleBasedCoverTitle(title);
+    var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(overlayTitle) + "</div>";
     return (
       '<div class="media-frame album-media-container cover-front">' +
       blurPart +
