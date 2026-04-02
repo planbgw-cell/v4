@@ -15,6 +15,7 @@ from app.crud import get_project, update_project_output_path, update_project_sta
 from app.database import SessionLocal
 from app.storage import get_project_final_dir
 from app.services import narrative_service
+from app.services.album_service import AlbumAIService
 from app.services.video_service import run_ai_analysis
 from app.utils.color_utils import get_accent_color_hex, get_dominant_color_hex
 from engine.album_engine import build_layout, build_layout_ai, save_album_layout
@@ -154,14 +155,17 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
         title = getattr(project, "title", None) or "디지털 앨범"
 
         if _is_ai_mode(project):
-            image_only = [m for m in sorted_media if getattr(m, "file_type", None) == "image"]
-            selected = [m for m in image_only if getattr(m, "is_selected", True)]
+            narrative_scores = getattr(project, "ai_narrative_order", None)
+            if not isinstance(narrative_scores, dict):
+                narrative_scores = None
+            selected = AlbumAIService.preprocess_media_for_ai_mode(
+                sorted_media,
+                score_threshold=ALBUM_SCORE_THRESHOLD,
+                narrative_scores=narrative_scores,
+            )
             curated = []
             for m in selected:
                 ai = getattr(m, "ai_analysis", None) or {}
-                score_100 = ai.get("score_100")
-                if score_100 is not None and int(score_100) < ALBUM_SCORE_THRESHOLD:
-                    continue
                 curated.append({
                     "file_path": getattr(m, "file_path", "") or "",
                     "file_type": getattr(m, "file_type", "image") or "image",
@@ -171,7 +175,7 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                 })
             english_title = None
             if not curated:
-                logger.warning("앨범 AI: 선별된 미디어 0건 (is_selected + score >= %d)", ALBUM_SCORE_THRESHOLD)
+                logger.warning("앨범 AI: 전처리 후 미디어 0건 (project_id=%s)", project_id)
             else:
                 descriptions = [item["ai_analysis"].get("description") or "" for item in curated]
                 english_title = narrative_service.generate_album_title_english(descriptions)
