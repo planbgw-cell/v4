@@ -58,12 +58,43 @@ window.initAlbumViewer = function () {
     return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(path);
   }
 
-  function objectPositionStyle(styles) {
-    if (!styles || !styles.focus_offset) return "";
+  function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function parsePct(v) {
+    if (v == null) return null;
+    var s = String(v).trim();
+    var m = s.match(/^(-?\d+(?:\.\d+)?)%$/);
+    if (!m) return null;
+    var n = parseFloat(m[1]);
+    return isNaN(n) ? null : n;
+  }
+
+  function focusXY(styles) {
+    if (!styles || !styles.focus_offset) return null;
     var x = styles.focus_offset.x;
     var y = styles.focus_offset.y;
-    if (x == null || y == null) return "";
-    return ' style="object-position:' + String(x).trim() + " " + String(y).trim() + ';"';
+    if (x == null || y == null) return null;
+    var xs = String(x).trim();
+    var ys = String(y).trim();
+    if (!xs || !ys) return null;
+    return { x: xs, y: ys };
+  }
+
+  function focusStyleAttr(styles, opts) {
+    var xy = focusXY(styles);
+    if (!xy) return "";
+    var includeOrigin = opts && opts.includeTransformOrigin;
+    var yNudgePct = (opts && typeof opts.yNudgePct === "number") ? opts.yNudgePct : 0;
+    var yNum = parsePct(xy.y);
+    var yStr = xy.y;
+    if (yNum != null && yNudgePct) {
+      yStr = clamp(yNum + yNudgePct, 0, 100).toFixed(1) + "%";
+    }
+    var out = "object-position:" + xy.x + " " + yStr + ";";
+    if (includeOrigin) out += "transform-origin:" + xy.x + " " + yStr + ";";
+    return ' style="' + out + '"';
   }
 
   function contrastColorForHex(hex) {
@@ -99,14 +130,22 @@ window.initAlbumViewer = function () {
   function slotHtml(mediaPath, styles, caption, fileType) {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
+    var hasFocus = !!focusXY(styles || {});
+    var isBlurBg = !!(styles && (styles.needs_blur || styles.background_blur));
+    // landscape blur은 살짝 위로 당겨 인물 상단 가림을 줄임(아주 미세)
+    var blurY = (hasFocus && isBlurBg) ? -1.2 : 0;
     var blurPart = isVideo
       ? ""
-      : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" decoding="async" />';
-    var posStyle = objectPositionStyle(styles || {});
-    var fitCls = "contain";
+      : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" decoding="async"' +
+        focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
+        " />";
+    var posStyle = hasFocus ? focusStyleAttr(styles || {}, { includeTransformOrigin: true, yNudgePct: (isBlurBg ? -0.6 : 0) }) : "";
+    var fitCls = hasFocus ? "cover ai-subject" : "contain";
     var mediaPart = isVideo
       ? '<div class="slot-video-stack">' +
-        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
+        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true"' +
+        focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
+        " />" +
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
       : '<img class="slot-img ' + fitCls + '" src="' + url + '" alt="" loading="lazy" decoding="async"' + posStyle + " />";
@@ -132,19 +171,28 @@ window.initAlbumViewer = function () {
     );
   }
 
-  function coverSlotHtml(mediaPath, fileType, title) {
+  function coverSlotHtml(mediaPath, fileType, title, styles) {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
     /* 앞표지만: 가로 이미지 시 상·하 검은 여백을 블러+확대 배경으로 채움 (내지 slotHtml과 별도) */
+    var hasFocus = !!focusXY(styles || {});
+    var isBlurBg = !!(styles && (styles.needs_blur || styles.background_blur));
+    var blurY = (hasFocus && isBlurBg) ? -1.2 : 0;
     var blurPart = isVideo
       ? ""
-      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" decoding="async" aria-hidden="true" />';
+      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" decoding="async" aria-hidden="true"' +
+        focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
+        " />";
     var mediaPart = isVideo
       ? '<div class="slot-video-stack">' +
-        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true" />' +
+        '<img class="slot-blur-poster" src="" alt="" decoding="async" aria-hidden="true"' +
+        focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
+        " />" +
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
-      : '<img class="slot-img contain" src="' + url + '" alt="" loading="lazy" decoding="async" />';
+      : '<img class="slot-img ' + (hasFocus ? "cover ai-subject" : "contain") + '" src="' + url + '" alt="" loading="lazy" decoding="async"' +
+        (hasFocus ? focusStyleAttr(styles || {}, { includeTransformOrigin: true, yNudgePct: (isBlurBg ? -0.6 : 0) }) : "") +
+        " />";
     var overlayTitle = formatRuleBasedCoverTitle(title);
     var overlayPart = '<div class="cover-title-overlay">' + escapeHtml(overlayTitle) + "</div>";
     return (
@@ -334,7 +382,7 @@ window.initAlbumViewer = function () {
         '<div class="spread-half spread-half-cover-right"' + rightStyle + ">" +
         '<div class="page-content page-content-cover-right">' +
         (page.right
-          ? coverSlotHtml(page.right, (page.file_types && page.file_types.right) || "", page.title || "")
+          ? coverSlotHtml(page.right, (page.file_types && page.file_types.right) || "", page.title || "", (page.styles && page.styles.right) || {})
           : '<div class="media-frame media-frame-placeholder"></div>') +
         "</div></div>";
       return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
@@ -461,7 +509,7 @@ window.initAlbumViewer = function () {
     if (!slot) return '<div class="media-frame media-frame-placeholder"></div>';
     if (slot.kind === "front") {
       return slot.page.right
-        ? coverSlotHtml(slot.page.right, (slot.page.file_types && slot.page.file_types.right) || "", slot.page.title || "") + coverFooterHtml()
+        ? coverSlotHtml(slot.page.right, (slot.page.file_types && slot.page.file_types.right) || "", slot.page.title || "", (slot.page.styles && slot.page.styles.right) || {}) + coverFooterHtml()
         : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
     }
     if (slot.kind === "back") {
@@ -637,7 +685,7 @@ window.initAlbumViewer = function () {
       var frontHtml;
       if (i === 0 && pages[i].type === "front") {
         frontHtml = pages[i].right
-          ? coverSlotHtml(pages[i].right, (pages[i].file_types && pages[i].file_types.right) || "", pages[i].title || "") + coverFooterHtml()
+          ? coverSlotHtml(pages[i].right, (pages[i].file_types && pages[i].file_types.right) || "", pages[i].title || "", (pages[i].styles && pages[i].styles.right) || {}) + coverFooterHtml()
           : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
       } else {
         frontHtml = front.media + buildLeafCaptionBar(front.caption, frontPageNum, front.emotion, front.bgColorHex, front.accentColorHex);
@@ -781,6 +829,7 @@ window.initAlbumViewer = function () {
     var maxIdx = maxIndexForMode();
     currentIndex = Math.max(0, Math.min(index, maxIdx));
     updateIndicatorAndThumb(currentIndex);
+    applyKenBurnsForCurrent();
     if (isDesktop()) {
       syncLeavesState();
       updateShadowOverlays();
@@ -791,6 +840,47 @@ window.initAlbumViewer = function () {
       setupVideoInPage(bookBodyEl);
       syncLeavesState();
       updateShadowOverlays();
+    }
+  }
+
+  function restartKenBurnsOnImg(img) {
+    if (!img) return;
+    try {
+      img.style.animation = "none";
+      // force reflow
+      void img.offsetHeight;
+      var dur = 5 + Math.random() * 3;
+      img.style.animation = "ai-motion-zoompan " + dur.toFixed(2) + "s ease-in-out 1 forwards";
+    } catch (e) {}
+  }
+
+  function applyKenBurnsForCurrent() {
+    // 비디오는 제외. AI focus_offset이 있는 이미지만 대상(.ai-subject)
+    try {
+      document.querySelectorAll("img.slot-img.ai-subject").forEach(function (img) {
+        img.style.animation = "none";
+      });
+    } catch (e) {}
+
+    if (!layout || !layout.pages) return;
+
+    if (isDesktop()) {
+      // 현재 스프레드의 좌/우 페이지에 해당하는 face만 선택
+      var leftLeaf = getLeafByIndex(currentIndex - 1);
+      var rightLeaf = getLeafByIndex(currentIndex);
+      if (leftLeaf) {
+        leftLeaf.querySelectorAll(".leaf-face.back img.slot-img.ai-subject").forEach(restartKenBurnsOnImg);
+      }
+      if (rightLeaf) {
+        rightLeaf.querySelectorAll(".leaf-face.front img.slot-img.ai-subject").forEach(restartKenBurnsOnImg);
+      }
+      return;
+    }
+
+    // 모바일: 현재 leaf만
+    var curLeaf = getLeafByIndex(currentIndex);
+    if (curLeaf) {
+      curLeaf.querySelectorAll(".leaf-face.front img.slot-img.ai-subject").forEach(restartKenBurnsOnImg);
     }
   }
 

@@ -368,6 +368,16 @@
   .slot-img.cover {
     object-fit: cover;
   }
+  /* AI Subject-Aware: cover + Ken Burns 준비 (비디오는 제외) */
+  .slot-img.ai-subject {
+    object-fit: cover;
+    will-change: transform;
+  }
+
+  @keyframes ai-motion-zoompan {
+    0% { transform: scale(1.0); }
+    100% { transform: scale(1.08); }
+  }
   .slot-video {
     position: absolute;
     inset: 0;
@@ -388,9 +398,9 @@
   }
 
   /* 3D 리프·모바일: 세로도 잘리지 않게 contain (높이 기준 9:16 슬롯과 정합) */
-  #bookBody .leaf-face .media-frame.is-portrait .slot-img,
+  #bookBody .leaf-face .media-frame.is-portrait .slot-img:not(.ai-subject),
   #bookBody .leaf-face .media-frame.is-portrait .slot-video,
-  .page-display .media-frame.is-portrait .slot-img,
+  .page-display .media-frame.is-portrait .slot-img:not(.ai-subject),
   .page-display .media-frame.is-portrait .slot-video {
     inset: 0 !important;
     width: 100% !important;
@@ -402,7 +412,7 @@
     box-shadow: none !important;
     border: none !important;
   }
-  .media-frame.is-portrait .slot-img,
+  .media-frame.is-portrait .slot-img:not(.ai-subject),
   .media-frame.is-portrait .slot-video {
     inset: 0 !important;
     width: 100% !important;
