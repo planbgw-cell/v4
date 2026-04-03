@@ -8,6 +8,7 @@ Non-invasive 원칙:
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from app.services import narrative_service
@@ -81,40 +82,137 @@ def _phash_similarity(a: str | None, b: str | None) -> float:
     return 1.0 - (diff / float(n))
 
 
+def _subject_center_norm(media: Any) -> tuple[float, float] | None:
+    """subject_box [ymin,xmin,ymax,xmax] 0~1000 → 중심 (cx, cy). 없으면 None."""
+    ai = getattr(media, "ai_analysis", None) or {}
+    if not isinstance(ai, dict):
+        return None
+    box = ai.get("subject_box")
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    try:
+        ymin, xmin, ymax, xmax = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+    except (TypeError, ValueError):
+        return None
+    return ((xmin + xmax) / 2.0, (ymin + ymax) / 2.0)
+
+
+def _combined_rank_score(media: Any, narrative_scores: dict[str, float] | None) -> float:
+    """서사 가중치 우선, 없으면 score_100."""
+    mid = str(getattr(media, "id", "") or "")
+    nw = 0.0
+    if narrative_scores and mid:
+        nw = float(narrative_scores.get(mid, 0.0))
+    s100 = _score_100(media)
+    return nw * 10.0 + s100 * 0.1
+
+
+def select_cover_collage_candidates(
+    media_files: list[Any],
+    *,
+    narrative_scores: dict[str, float] | None = None,
+    min_total_for_collage: int = 4,
+) -> list[Any] | None:
+    """
+    커버 폴라로이드 콜라주용 이미지 3장 선정.
+    - narrative_weight(맵) + score 보조 점수로 상위 후보를 고른 뒤,
+      subject_box 중심 간 거리가 멀수록 겹침이 적다고 보고 탐욕적으로 3장 선택.
+    - 전체 미디어가 min_total_for_collage 미만이면 None (단일 표지 폴백).
+    """
+    imgs = [m for m in media_files if (getattr(m, "file_type", "") or "").lower() == "image"]
+    if len(imgs) < min_total_for_collage:
+        return None
+
+    ranked = sorted(
+        imgs,
+        key=lambda m: (-_combined_rank_score(m, narrative_scores), int(getattr(m, "order_index", 0))),
+    )
+    pool = ranked[: min(12, len(ranked))]
+
+    def _mid(m: Any) -> Any:
+        return getattr(m, "id", None)
+
+    picked: list[Any] = []
+    picked_ids: set[Any] = set()
+    for _ in range(3):
+        best_m: Any | None = None
+        best_key: tuple[float, float] = (-1.0, -1.0)
+        for cand in pool:
+            if _mid(cand) in picked_ids:
+                continue
+            centers = [_subject_center_norm(x) for x in picked + [cand]]
+            centers = [c for c in centers if c is not None]
+            if len(centers) < 2:
+                score = _combined_rank_score(cand, narrative_scores)
+            else:
+                min_d = min(
+                    math.hypot(centers[-1][0] - c[0], centers[-1][1] - c[1])
+                    for c in centers[:-1]
+                    if c is not None
+                )
+                score = min_d * 100.0 + _combined_rank_score(cand, narrative_scores) * 0.01
+            key = (score, _combined_rank_score(cand, narrative_scores))
+            if key > best_key:
+                best_key = key
+                best_m = cand
+        if best_m is not None:
+            picked.append(best_m)
+            picked_ids.add(_mid(best_m))
+
+    if len(picked) < 3:
+        picked = ranked[:3]
+
+    out = picked[:3]
+    logger.info(
+        "[Cover Collage] selected media_ids=%s",
+        [getattr(m, "id", None) for m in out],
+    )
+    return out
+
+
 class AlbumAIService:
+    @staticmethod
+    def select_cover_collage_candidates(
+        media_files: list[Any],
+        *,
+        narrative_scores: dict[str, float] | None = None,
+    ) -> list[Any] | None:
+        return select_cover_collage_candidates(media_files, narrative_scores=narrative_scores)
+
     @staticmethod
     def preprocess_media_for_ai_mode(
         media_files: list[Any],
         *,
-        score_threshold: int = 60,
         phash_similarity_threshold: float = PHASH_SIMILARITY_THRESHOLD,
         narrative_scores: dict[str, float] | None = None,
     ) -> list[Any]:
         """
-        AI 모드 전처리(중복 제거 -> 서사 정렬 -> 표지 배치).
+        AI 모드 전처리(이미지 dedup -> 서사 정렬 -> 표지 배치).
         반환: AlbumEngine에 전달 가능한 정렬된 MediaFile 리스트.
         """
         if not media_files:
             return []
 
-        image_only = [m for m in media_files if (getattr(m, "file_type", "") or "").lower() == "image"]
-        if not image_only:
+        selected_candidates = [m for m in media_files if bool(getattr(m, "is_selected", True))]
+        if not selected_candidates:
             return []
 
-        # 0) 사전 필터: is_selected + score_threshold
-        base_candidates: list[Any] = []
-        for m in image_only:
-            selected = bool(getattr(m, "is_selected", True))
-            keep = selected and (_score_100(m) >= float(score_threshold))
-            setattr(m, "is_selected", keep)
-            if keep:
-                base_candidates.append(m)
+        # 비이미지는 dedup 대상에서 제외하고 그대로 유지(동영상 포함).
+        image_candidates = [
+            m for m in selected_candidates if (getattr(m, "file_type", "") or "").lower() == "image"
+        ]
+        non_image_candidates = [
+            m for m in selected_candidates if (getattr(m, "file_type", "") or "").lower() != "image"
+        ]
 
-        if not base_candidates:
-            return []
+        # 이미지가 하나도 없으면(동영상만 있는 경우) 그대로 반환.
+        if not image_candidates:
+            out = sorted(non_image_candidates, key=lambda m: int(getattr(m, "order_index", 0)))
+            logger.info("[Album AI] Image dedup skipped: no images, kept=%d", len(out))
+            return out
 
         # 1) Deduplication (pHash 유사도 임계치 기반 그룹 중 최고점 1개 유지)
-        n = len(base_candidates)
+        n = len(image_candidates)
         parent = list(range(n))
 
         def find(x: int) -> int:
@@ -128,7 +226,7 @@ class AlbumAIService:
             if ra != rb:
                 parent[rb] = ra
 
-        phashes = [_get_phash_str(m) for m in base_candidates]
+        phashes = [_get_phash_str(m) for m in image_candidates]
         for i in range(n):
             if not phashes[i]:
                 continue
@@ -143,21 +241,26 @@ class AlbumAIService:
         for idx in range(n):
             groups.setdefault(find(idx), []).append(idx)
 
-        deduped: list[Any] = []
+        deduped_images: list[Any] = []
         for members in groups.values():
             best_idx = max(
                 members,
-                key=lambda k: (_score_100(base_candidates[k]), -int(getattr(base_candidates[k], "order_index", 0))),
+                key=lambda k: (_score_100(image_candidates[k]), -int(getattr(image_candidates[k], "order_index", 0))),
             )
             for k in members:
                 keep = (k == best_idx)
-                setattr(base_candidates[k], "is_selected", keep)
-            deduped.append(base_candidates[best_idx])
+                setattr(image_candidates[k], "is_selected", keep)
+            deduped_images.append(image_candidates[best_idx])
 
-        deduped = sorted(deduped, key=lambda m: int(getattr(m, "order_index", 0)))
+        deduped = sorted(
+            deduped_images + non_image_candidates,
+            key=lambda m: int(getattr(m, "order_index", 0)),
+        )
         logger.info(
-            "[Album AI] Deduplication applied: input=%d kept=%d threshold=%.2f",
-            len(base_candidates),
+            "[Album AI] Deduplication applied: images_input=%d images_kept=%d non_images_kept=%d total_kept=%d threshold=%.2f",
+            len(image_candidates),
+            len(deduped_images),
+            len(non_image_candidates),
             len(deduped),
             phash_similarity_threshold,
         )

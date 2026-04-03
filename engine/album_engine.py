@@ -145,11 +145,60 @@ def _theme_tone_and_hint(emotion: str, tone: str) -> tuple[str, str | None]:
     return (tone, None)
 
 
+def _score_dict_item(item: dict[str, Any]) -> int:
+    ai = item.get("ai_analysis") or {}
+    s = ai.get("score_100")
+    if s is None:
+        return 0
+    try:
+        return int(s)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _style_for_curated_dict(
+    item: dict[str, Any],
+    median: int,
+    *,
+    include_caption: bool = True,
+) -> dict[str, Any]:
+    """curated 항목 dict → 뷰어용 styles (build_layout_ai 내부 style_at와 동일)."""
+    w = item.get("width")
+    h = item.get("height")
+    base = _style_for_media(w, h)
+    ai = item.get("ai_analysis") or {}
+    focus = _compute_focus_offset(ai)
+    if focus:
+        base["focus_offset"] = focus
+    emotion = (ai.get("emotion") or "").strip()
+    if emotion:
+        base["emotion"] = emotion
+    lyrical = (item.get("lyrical_caption") or "").strip()
+    s = _score_dict_item(item)
+    show = s >= median
+    if include_caption and show and lyrical:
+        base["ai_caption"] = lyrical[:200]
+    dominant_hex = item.get("dominant_color_hex") or ai.get("dominant_color")
+    if not dominant_hex and isinstance(ai.get("colors"), (list, tuple)) and ai["colors"]:
+        dominant_hex = ai["colors"][0]
+    base["bg_color_hex"] = _soft_tint_hex(dominant_hex or "#cccccc")
+    accent_hex = item.get("accent_color_hex") or ai.get("accent_color")
+    if accent_hex:
+        base["accent_color_hex"] = accent_hex
+    tone = _theme_tone_from_hex(dominant_hex or "#888888")
+    theme_tone, bg_hint = _theme_tone_and_hint(emotion, tone)
+    base["theme_tone"] = theme_tone
+    if bg_hint:
+        base["bg_tint_hint"] = bg_hint
+    return base
+
+
 def build_layout_ai(
     curated_media_list: list[dict[str, Any]],
     project_title: str,
     project_id: str | None = None,
     english_title: str | None = None,
+    cover_collage_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     AI 모드 전용: 1페이지 1미디어, 서사 재배치, focus_offset/ai_caption/emotion/bg_color_hex.
@@ -197,44 +246,10 @@ def build_layout_ai(
         return (ordered[i].get("file_type") or "image").lower()
 
     def score_at(i: int) -> int:
-        ai = ordered[i].get("ai_analysis") or {}
-        s = ai.get("score_100")
-        if s is None:
-            return 0
-        try:
-            return int(s)
-        except (TypeError, ValueError):
-            return 0
+        return _score_dict_item(ordered[i])
 
     def style_at(i: int) -> dict[str, Any]:
-        w = ordered[i].get("width")
-        h = ordered[i].get("height")
-        base = _style_for_media(w, h)
-        ai = ordered[i].get("ai_analysis") or {}
-        focus = _compute_focus_offset(ai)
-        if focus:
-            base["focus_offset"] = focus
-        emotion = (ai.get("emotion") or "").strip()
-        if emotion:
-            base["emotion"] = emotion
-        lyrical = (ordered[i].get("lyrical_caption") or "").strip()
-        show = score_at(i) >= median
-        if show and lyrical:
-            base["ai_caption"] = lyrical[:200]
-        # 동적 테마: 도미넌트 → 뮤트 배경, 액센트, theme_tone
-        dominant_hex = ordered[i].get("dominant_color_hex") or ai.get("dominant_color")
-        if not dominant_hex and isinstance(ai.get("colors"), (list, tuple)) and ai["colors"]:
-            dominant_hex = ai["colors"][0]
-        base["bg_color_hex"] = _soft_tint_hex(dominant_hex or "#cccccc")
-        accent_hex = ordered[i].get("accent_color_hex") or ai.get("accent_color")
-        if accent_hex:
-            base["accent_color_hex"] = accent_hex
-        tone = _theme_tone_from_hex(dominant_hex or "#888888")
-        theme_tone, bg_hint = _theme_tone_and_hint(emotion, tone)
-        base["theme_tone"] = theme_tone
-        if bg_hint:
-            base["bg_tint_hint"] = bg_hint
-        return base
+        return _style_for_curated_dict(ordered[i], median, include_caption=True)
 
     def caption_at(i: int) -> str:
         """score_100 >= median 일 때만 lyrical_caption 반환."""
@@ -242,42 +257,150 @@ def build_layout_ai(
             return ""
         return (ordered[i].get("lyrical_caption") or "").strip()[:200]
 
+    def caption_for_item(item: dict[str, Any]) -> str:
+        if _score_dict_item(item) < median:
+            return ""
+        return (item.get("lyrical_caption") or "").strip()[:200]
+
     cover_title = (english_title or project_title or "디지털 앨범").strip()
 
-    # 앞표지: right=첫 미디어
-    out["pages"].append({
-        "type": "front",
-        "template_type": "standard",
-        "left": None,
-        "right": path_at(0),
-        "title": cover_title,
-        "styles": {"left": None, "right": style_at(0)},
-        "file_types": {"left": None, "right": file_type_at(0)},
-    })
+    use_collage = False
+    interior: list[dict[str, Any]] = []
+    cover_assets_out: list[dict[str, Any]] = []
+    best_item: dict[str, Any] | None = None
 
-    # 내지: 1페이지 1미디어. score >= median 인 슬롯만 captions에 자막 설정
-    for i in range(1, n):
-        cap = caption_at(i)
-        if i % 2 == 1:
-            out["pages"].append({
-                "type": "spread",
-                "template_type": "standard",
-                "left": path_at(i),
-                "right": None,
-                "styles": {"left": style_at(i), "right": None},
-                "captions": {"left": cap, "right": ""},
-                "file_types": {"left": file_type_at(i), "right": None},
-            })
-        else:
-            out["pages"].append({
-                "type": "spread",
-                "template_type": "standard",
+    if (
+        cover_collage_paths is not None
+        and len(cover_collage_paths) == 3
+        and len(set(cover_collage_paths)) == 3
+        and n >= 4
+    ):
+        by_path: dict[str, dict[str, Any]] = {}
+        for x in ordered:
+            fp = (x.get("file_path") or "").strip()
+            if fp:
+                by_path[fp] = x
+        cover_items = [by_path[p] for p in cover_collage_paths if p in by_path]
+        if len(cover_items) == 3:
+            # 내지: 서사 순서 ordered 전체 (중복 허용 정책)
+            interior = list(ordered)
+            sorted_by_score = sorted(cover_items, key=_score_dict_item, reverse=True)
+            best_item, mid_item, low_item = sorted_by_score[0], sorted_by_score[1], sorted_by_score[2]
+            layout_order = [mid_item, low_item, best_item]
+            for asset in layout_order:
+                row: dict[str, Any] = {
+                    "path": asset.get("file_path") or "",
+                    "file_type": (asset.get("file_type") or "image").lower(),
+                    "styles": _style_for_curated_dict(asset, median, include_caption=False),
+                }
+                mid_id = asset.get("media_id")
+                if mid_id is not None:
+                    row["media_id"] = str(mid_id)
+                cover_assets_out.append(row)
+            use_collage = True
+
+    if use_collage and best_item is not None:
+        logger.info(
+            "[AlbumEngine] build_layout_ai: cover collage (3) + interior spreads=%d (sequential pair fill)",
+            len(interior),
+        )
+        out["pages"].append({
+            "type": "front",
+            "template_type": "standard",
+            "layout_type": "collage",
+            "left": None,
+            "right": best_item.get("file_path") or "",
+            "title": cover_title,
+            "styles": {
                 "left": None,
-                "right": path_at(i),
-                "styles": {"left": None, "right": style_at(i)},
-                "captions": {"left": "", "right": cap},
-                "file_types": {"left": None, "right": file_type_at(i)},
-            })
+                "right": _style_for_curated_dict(best_item, median, include_caption=False),
+            },
+            "file_types": {"left": None, "right": (best_item.get("file_type") or "image").lower()},
+            "cover_assets": cover_assets_out,
+        })
+        # Viewer(PC) 매핑은 pages[i].right(front) + pages[i+1].left(back)를 사용하므로,
+        # 콜라주 이후 spread 페이지는 left/right를 "페어로" 채워야 특정 페이지가 null로 비지 않습니다.
+        for k in range(0, len(interior), 2):
+            left_item = interior[k]
+            right_item = interior[k + 1] if k + 1 < len(interior) else None
+
+            left_path = left_item.get("file_path") or ""
+            left_ft = (left_item.get("file_type") or "image").lower()
+            left_st = _style_for_curated_dict(left_item, median, include_caption=True)
+            left_cap = caption_for_item(left_item)
+
+            if right_item is None:
+                out["pages"].append({
+                    "type": "spread",
+                    "template_type": "standard",
+                    "left": left_path,
+                    "right": None,
+                    "styles": {"left": left_st, "right": None},
+                    "captions": {"left": left_cap, "right": ""},
+                    "file_types": {"left": left_ft, "right": None},
+                })
+            else:
+                right_path = right_item.get("file_path") or ""
+                right_ft = (right_item.get("file_type") or "image").lower()
+                right_st = _style_for_curated_dict(right_item, median, include_caption=True)
+                right_cap = caption_for_item(right_item)
+                out["pages"].append({
+                    "type": "spread",
+                    "template_type": "standard",
+                    "left": left_path,
+                    "right": right_path,
+                    "styles": {"left": left_st, "right": right_st},
+                    "captions": {"left": left_cap, "right": right_cap},
+                    "file_types": {"left": left_ft, "right": right_ft},
+                })
+    else:
+        # 앞표지: right=첫 미디어 (단일 표지)
+        out["pages"].append({
+            "type": "front",
+            "template_type": "standard",
+            "left": None,
+            "right": path_at(0),
+            "title": cover_title,
+            "styles": {"left": None, "right": style_at(0)},
+            "file_types": {"left": None, "right": file_type_at(0)},
+        })
+
+        # 내지: 연속 두 장씩 한 spread에 left/right 동시 배치 (콜라주 분기와 동일, PC 썸네일·뷰어와 일치)
+        logger.info(
+            "[AlbumEngine] build_layout_ai: standard cover + interior sequential pair fill (n=%d)",
+            n,
+        )
+        for k in range(1, n, 2):
+            left_i = k
+            right_i = k + 1 if k + 1 < n else None
+            left_cap = caption_at(left_i)
+            left_path = path_at(left_i)
+            left_ft = file_type_at(left_i)
+            left_st = style_at(left_i)
+            if right_i is None:
+                out["pages"].append({
+                    "type": "spread",
+                    "template_type": "standard",
+                    "left": left_path,
+                    "right": None,
+                    "styles": {"left": left_st, "right": None},
+                    "captions": {"left": left_cap, "right": ""},
+                    "file_types": {"left": left_ft, "right": None},
+                })
+            else:
+                right_cap = caption_at(right_i)
+                right_path = path_at(right_i)
+                right_ft = file_type_at(right_i)
+                right_st = style_at(right_i)
+                out["pages"].append({
+                    "type": "spread",
+                    "template_type": "standard",
+                    "left": left_path,
+                    "right": right_path,
+                    "styles": {"left": left_st, "right": right_st},
+                    "captions": {"left": left_cap, "right": right_cap},
+                    "file_types": {"left": left_ft, "right": right_ft},
+                })
 
     # 뒷표지: left=null (프리미엄 뒷표지 디자인만)
     out["pages"].append({

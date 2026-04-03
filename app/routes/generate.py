@@ -129,8 +129,6 @@ def _run_generate_task(project_id_str: str) -> None:
         raise
 
 
-# 앨범 AI 모드: score_100 이하면 제외 (60점 미만)
-ALBUM_SCORE_THRESHOLD = 60
 MIN_ALBUM_MEDIA_FILES = 5
 
 
@@ -160,7 +158,6 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                 narrative_scores = None
             selected = AlbumAIService.preprocess_media_for_ai_mode(
                 sorted_media,
-                score_threshold=ALBUM_SCORE_THRESHOLD,
                 narrative_scores=narrative_scores,
             )
             curated = []
@@ -172,6 +169,7 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                     "width": getattr(m, "width", None),
                     "height": getattr(m, "height", None),
                     "ai_analysis": ai,
+                    "media_id": getattr(m, "id", None),
                 })
             english_title = None
             if not curated:
@@ -193,8 +191,49 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                     item["dominant_color_hex"] = dominant_hex
                     if item.get("file_path"):
                         item["accent_color_hex"] = get_accent_color_hex(ROOT / item["file_path"])
-            logger.info("[Album] Calling build_layout_ai: curated_count=%s project_id=%s", len(curated), project_id)
-            layout = build_layout_ai(curated, title, project_id=str(project_id), english_title=english_title)
+            cover_collage_paths = None
+            if curated and len(selected) >= 4:
+                cover_three = AlbumAIService.select_cover_collage_candidates(
+                    selected,
+                    narrative_scores=narrative_scores,
+                )
+                if cover_three and len(cover_three) == 3:
+                    cover_collage_paths = [getattr(m, "file_path", "") or "" for m in cover_three]
+                    if len(set(cover_collage_paths)) != 3:
+                        cover_collage_paths = None
+            logger.info(
+                "[Album] Calling build_layout_ai: curated_count=%s project_id=%s cover_collage=%s",
+                len(curated),
+                project_id,
+                bool(cover_collage_paths),
+            )
+            layout = build_layout_ai(
+                curated,
+                title,
+                project_id=str(project_id),
+                english_title=english_title,
+                cover_collage_paths=cover_collage_paths,
+            )
+            try:
+                if layout and layout.get("pages"):
+                    pages = layout.get("pages") or []
+                    spread_count = sum(1 for p in pages if p and p.get("type") == "spread")
+                    pages_len = len(pages)
+                    n_cur = len(curated)
+                    # 콜라주: 내지가 ordered 전체 n장 → ceil(n/2) spread. 비콜라주: 앞표지 1장 제외 → floor(n/2) spread.
+                    expected_spreads = (
+                        (n_cur + 1) // 2 if cover_collage_paths else n_cur // 2
+                    )
+                    logger.info(
+                        "[Album] build_layout_ai result: pages=%d spreads=%d expected_spreads=%d (n=%d collage=%s)",
+                        pages_len,
+                        spread_count,
+                        expected_spreads,
+                        n_cur,
+                        bool(cover_collage_paths),
+                    )
+            except Exception:
+                logger.exception("[Album] build_layout_ai post-validate failed: project_id=%s", project_id)
         else:
             media_list = [
                 {

@@ -204,6 +204,49 @@ window.initAlbumViewer = function () {
     );
   }
 
+  /** AI 콜라주 앞표지: 폴라로이드 3장 (cover_assets DOM 순서 = 하단→상단 z) */
+  function coverCollageHtml(page) {
+    var assets = page.cover_assets || [];
+    var title = page.title || "";
+    var overlayPart =
+      '<div class="cover-title-overlay cover-title-collage">' +
+      escapeHtml(formatRuleBasedCoverTitle(title)) +
+      "</div>";
+    var polaroids = "";
+    for (var j = 0; j < assets.length; j++) {
+      var a = assets[j];
+      var styles = a.styles || {};
+      var url = toRawUrl(a.path || "");
+      var isLast = j === assets.length - 1;
+      var hasFocus = !!focusXY(styles);
+      var cls = "polaroid-img";
+      if (isLast && hasFocus) cls += " slot-img cover ai-subject";
+      var posStyle = hasFocus ? focusStyleAttr(styles, { includeTransformOrigin: true }) : "";
+      polaroids +=
+        '<figure class="polaroid polaroid-' +
+        (j + 1) +
+        '" data-z="' +
+        (j + 1) +
+        '">' +
+        '<img class="' +
+        cls +
+        '" src="' +
+        url +
+        '" alt="" loading="lazy" decoding="async"' +
+        posStyle +
+        " />" +
+        "</figure>";
+    }
+    return (
+      '<div class="media-frame album-media-container cover-front cover-collage-wrap">' +
+      '<div class="cover-polaroid-stack">' +
+      polaroids +
+      "</div>" +
+      overlayPart +
+      "</div>"
+    );
+  }
+
   function coverFooterHtml() {
     return '<div class="cover-footer"></div>';
   }
@@ -307,6 +350,7 @@ window.initAlbumViewer = function () {
         if (!w || !h) return;
         var frame = img.closest(".media-frame");
         if (!frame) return;
+        if (frame.classList.contains("cover-collage-wrap")) return;
         frame.classList.toggle("is-portrait", h >= w);
         frame.classList.toggle("is-landscape", w > h);
       }
@@ -378,12 +422,16 @@ window.initAlbumViewer = function () {
         '<div class="page-content">' +
         '<div class="media-frame media-frame-placeholder"></div>' +
         "</div></div>";
+      var rightHtmlInner =
+        page.layout_type === "collage" && page.cover_assets && page.cover_assets.length
+          ? coverCollageHtml(page)
+          : page.right
+            ? coverSlotHtml(page.right, (page.file_types && page.file_types.right) || "", page.title || "", (page.styles && page.styles.right) || {})
+            : '<div class="media-frame media-frame-placeholder"></div>';
       var rightHtml =
         '<div class="spread-half spread-half-cover-right"' + rightStyle + ">" +
         '<div class="page-content page-content-cover-right">' +
-        (page.right
-          ? coverSlotHtml(page.right, (page.file_types && page.file_types.right) || "", page.title || "", (page.styles && page.styles.right) || {})
-          : '<div class="media-frame media-frame-placeholder"></div>') +
+        rightHtmlInner +
         "</div></div>";
       return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
     }
@@ -508,8 +556,12 @@ window.initAlbumViewer = function () {
     var pageNum = index + 1;
     if (!slot) return '<div class="media-frame media-frame-placeholder"></div>';
     if (slot.kind === "front") {
-      return slot.page.right
-        ? coverSlotHtml(slot.page.right, (slot.page.file_types && slot.page.file_types.right) || "", slot.page.title || "", (slot.page.styles && slot.page.styles.right) || {}) + coverFooterHtml()
+      var fp = slot.page;
+      if (fp.layout_type === "collage" && fp.cover_assets && fp.cover_assets.length) {
+        return coverCollageHtml(fp) + coverFooterHtml();
+      }
+      return fp.right
+        ? coverSlotHtml(fp.right, (fp.file_types && fp.file_types.right) || "", fp.title || "", (fp.styles && fp.styles.right) || {}) + coverFooterHtml()
         : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
     }
     if (slot.kind === "back") {
@@ -684,9 +736,13 @@ window.initAlbumViewer = function () {
       var backPageNum = 2 * i + 3;
       var frontHtml;
       if (i === 0 && pages[i].type === "front") {
-        frontHtml = pages[i].right
-          ? coverSlotHtml(pages[i].right, (pages[i].file_types && pages[i].file_types.right) || "", pages[i].title || "", (pages[i].styles && pages[i].styles.right) || {}) + coverFooterHtml()
-          : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
+        if (pages[i].layout_type === "collage" && pages[i].cover_assets && pages[i].cover_assets.length) {
+          frontHtml = coverCollageHtml(pages[i]) + coverFooterHtml();
+        } else {
+          frontHtml = pages[i].right
+            ? coverSlotHtml(pages[i].right, (pages[i].file_types && pages[i].file_types.right) || "", pages[i].title || "", (pages[i].styles && pages[i].styles.right) || {}) + coverFooterHtml()
+            : '<div class="media-frame media-frame-placeholder"></div>' + coverFooterHtml();
+        }
       } else {
         frontHtml = front.media + buildLeafCaptionBar(front.caption, frontPageNum, front.emotion, front.bgColorHex, front.accentColorHex);
       }
@@ -1076,10 +1132,50 @@ window.initAlbumViewer = function () {
       var rawPages = data.pages || [];
       layout.pages = rawPages.filter(function (p) {
         if (!p) return false;
+        if (p.type === "back") return true;
         var hasLeft = !!(p.left && String(p.left).trim());
         var hasRight = !!(p.right && String(p.right).trim());
-        return hasLeft || hasRight;
+        var hasCollage = !!(p.layout_type === "collage" && p.cover_assets && p.cover_assets.length);
+        return hasLeft || hasRight || hasCollage;
       });
+
+      // [DEBUG] 콜라주/AI spread의 left/right가 누락되어 특정 페이지(예: 2/3/6)가 빈 화면이 되는지 빠르게 확인
+      if (window.__ALBUM_DEBUG__) {
+        try {
+          var targetPages = [2, 3, 6];
+          var rows = [];
+          for (var pi = 0; pi < layout.pages.length; pi++) {
+            var pg = layout.pages[pi];
+            if (!pg || pg.type !== "spread") continue;
+
+            var leftPage = 2 * (pi - 1) + 1;
+            var rightPage = leftPage + 1;
+            var leftEmpty = !(pg.left && String(pg.left).trim());
+            var rightEmpty = !(pg.right && String(pg.right).trim());
+
+            if (targetPages.indexOf(leftPage) >= 0) {
+              rows.push({
+                targetPage: leftPage,
+                spreadIndex: pi,
+                side: "left",
+                leftPresent: !leftEmpty,
+                rightPresent: !rightEmpty,
+              });
+            }
+            if (targetPages.indexOf(rightPage) >= 0) {
+              rows.push({
+                targetPage: rightPage,
+                spreadIndex: pi,
+                side: "right",
+                leftPresent: !leftEmpty,
+                rightPresent: !rightEmpty,
+              });
+            }
+          }
+          if (rows.length) console.table(rows);
+        } catch (e) {}
+      }
+
       var loadingStateEl = document.getElementById("loadingState");
       if (loadingStateEl) loadingStateEl.classList.add("hidden");
       if (!layout.pages.length) {
