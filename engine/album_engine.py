@@ -203,7 +203,7 @@ def build_layout_ai(
     """
     AI 모드 전용: 1페이지 1미디어, 서사 재배치, focus_offset/ai_caption/emotion/bg_color_hex.
     curated_media_list 항목: file_path, file_type, width, height, ai_analysis, lyrical_caption(선택).
-    english_title이 있으면 앞표지 title로 사용. score_100 >= median 인 슬롯에만 자막 노출.
+    앞표지 title은 항상 project_title 사용. score_100 >= median 인 슬롯에만 자막 노출.
     """
     logger.info(
         "[AlbumEngine] build_layout_ai entered: curated_count=%s project_id=%s title=%s",
@@ -262,7 +262,7 @@ def build_layout_ai(
             return ""
         return (item.get("lyrical_caption") or "").strip()[:200]
 
-    cover_title = (english_title or project_title or "디지털 앨범").strip()
+    cover_title = (project_title or "디지털 앨범").strip()
 
     use_collage = False
     interior: list[dict[str, Any]] = []

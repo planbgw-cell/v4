@@ -149,24 +149,11 @@ window.initAlbumViewer = function () {
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
       : '<img class="slot-img ' + fitCls + '" src="' + url + '" alt="" loading="lazy" decoding="async"' + posStyle + " />";
-    var captionPart = "";
-    if (caption) {
-      var emotionCls = emotionClass(styles || {});
-      var colorStyle = "";
-      var bgHex = (styles && styles.bg_color_hex) ? styles.bg_color_hex : null;
-      if (bgHex) {
-        var cc = contrastColorForHex(bgHex);
-        if (cc) colorStyle = ' style="color:' + cc + '"';
-      }
-      var accentHex = (styles && styles.accent_color_hex) ? styles.accent_color_hex : null;
-      var dotPart = accentHex ? '<span class="caption-accent-dot" style="color:' + accentHex + '">·</span> ' : "";
-      captionPart = '<div class="slot-caption' + emotionCls + '"' + colorStyle + ">" + dotPart + escapeHtml(caption) + "</div>";
-    }
+    // 하단 감성 자막은 임시 비활성화(추후 고도화 예정).
     return (
       '<div class="media-frame album-media-container">' +
       blurPart +
       mediaPart +
-      captionPart +
       "</div>"
     );
   }
@@ -516,18 +503,8 @@ window.initAlbumViewer = function () {
   }
 
   function buildLeafCaptionBar(caption, pageNum, emotion, bgColorHex, accentColorHex) {
-    var emotionCls = (emotion && String(emotion).trim()) ? " caption-emotion-" + String(emotion).trim().toLowerCase().replace(/\s+/g, "-") : "";
-    var colorStyle = "";
-    if (bgColorHex) {
-      var cc = contrastColorForHex(bgColorHex);
-      if (cc) colorStyle = ' style="color:' + cc + '"';
-    }
-    var dotPart = accentColorHex ? '<span class="caption-accent-dot" style="color:' + accentColorHex + '">·</span> ' : "";
-    var pageNumStyle = "";
-    if (accentColorHex) pageNumStyle = ' style="border-bottom:1px solid ' + accentColorHex + '"';
-    return '<div class="slot-caption leaf-caption-bar' + emotionCls + '"' + colorStyle + ">" +
-      (caption ? dotPart + escapeHtml(caption) : '') +
-      '<span class="leaf-page-num"' + pageNumStyle + ">Page " + pageNum + "</span></div>";
+    // 하단 감성 자막/페이지 번호는 임시 비활성화(추후 고도화 예정).
+    return "";
   }
 
   function buildMobileSlots(pages) {

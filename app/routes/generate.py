@@ -171,12 +171,10 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                     "ai_analysis": ai,
                     "media_id": getattr(m, "id", None),
                 })
-            english_title = None
             if not curated:
                 logger.warning("앨범 AI: 전처리 후 미디어 0건 (project_id=%s)", project_id)
             else:
                 descriptions = [item["ai_analysis"].get("description") or "" for item in curated]
-                english_title = narrative_service.generate_album_title_english(descriptions)
                 lyrical_list = narrative_service.generate_lyrical_captions(descriptions)
                 for i, item in enumerate(curated):
                     item["lyrical_caption"] = lyrical_list[i] if i < len(lyrical_list) else ""
@@ -211,7 +209,6 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                 curated,
                 title,
                 project_id=str(project_id),
-                english_title=english_title,
                 cover_collage_paths=cover_collage_paths,
             )
             try:
