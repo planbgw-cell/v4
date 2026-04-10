@@ -284,7 +284,7 @@
     padding: 0 !important;
   }
   /* 블러 배경: 세로/가로 모두 적용, A4 여백 침범 방지 */
-  .slot-blur {
+  .leaf:not(.is-flipping) .slot-blur {
     position: absolute;
     top: 0;
     left: 0;
@@ -298,7 +298,7 @@
     z-index: 0;
   }
 
-  .slot-blur-video {
+  .leaf:not(.is-flipping) .slot-blur-video {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -324,7 +324,7 @@
   .media-frame.is-portrait .slot-video-stack {
     overflow: hidden;
   }
-  .media-frame.is-landscape .slot-blur-poster {
+  .leaf:not(.is-flipping) .media-frame.is-landscape .slot-blur-poster {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -341,7 +341,7 @@
     pointer-events: none;
     transition: opacity 0.35s ease;
   }
-  .media-frame.is-landscape .slot-blur-poster.slot-blur-poster--ready {
+  .leaf:not(.is-flipping) .media-frame.is-landscape .slot-blur-poster.slot-blur-poster--ready {
     opacity: 0.6;
   }
   .media-frame.is-portrait .slot-blur-poster {
@@ -1039,10 +1039,11 @@
     transition: background-color 0.8s ease-in-out;
   }
   .leaf-face.front {
+    transform: translate3d(0, 0, 0.1px);
     border-radius: 0 4px 4px 0;
   }
   .leaf-face.back {
-    transform: rotateY(180deg);
+    transform: rotateY(180deg) translate3d(0, 0, 0.2px);
     border-radius: 4px 0 0 4px;
   }
   #bookBody .leaf-face-content {
@@ -1112,6 +1113,8 @@
   .leaf.is-flipping .slot-blur-poster {
     filter: none !important;
     -webkit-filter: none !important;
+    transition: filter 0.2s ease;
+    background: #f0f0f0 !important;
     opacity: 0 !important;
   }
   .leaf.flipped .leaf-spine-shadow {

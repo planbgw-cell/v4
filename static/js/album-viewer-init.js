@@ -830,6 +830,20 @@ window.initAlbumViewer = function () {
       }
     }
 
+    // GPU 예약 최소화: 현재/인접 리프만 will-change 유지
+    var activeWindow = {};
+    activeWindow[currentIndex] = true;
+    activeWindow[currentIndex + 1] = true;
+    activeWindow[currentIndex - 1] = true;
+    document.querySelectorAll("#bookBody .leaf").forEach(function (leafEl) {
+      var idxVal = Number(leafEl.dataset.leafIndex || "-1");
+      if (activeWindow[idxVal]) {
+        leafEl.style.willChange = "transform";
+      } else {
+        leafEl.style.willChange = "auto";
+      }
+    });
+
     if (window.__ALBUM_DEBUG__) {
       if (currentIndex !== lastDebugIndex) {
         lastDebugIndex = currentIndex;
