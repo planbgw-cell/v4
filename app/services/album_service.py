@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import math
+import random
+import re
 from typing import Any
 
 from app.services import narrative_service
@@ -16,6 +18,7 @@ from app.services import narrative_service
 logger = logging.getLogger(__name__)
 
 PHASH_SIMILARITY_THRESHOLD = 0.90
+CAPTION_RATIO = 0.15
 
 
 def _score_100(media: Any) -> float:
@@ -107,6 +110,121 @@ def _combined_rank_score(media: Any, narrative_scores: dict[str, float] | None) 
     return nw * 10.0 + s100 * 0.1
 
 
+def _is_korean_text(text: str) -> bool:
+    return bool(re.search(r"[가-힣]", text or ""))
+
+
+def _safe_description(media: Any) -> str:
+    ai = getattr(media, "ai_analysis", None) or {}
+    if not isinstance(ai, dict):
+        return ""
+    return str(ai.get("description") or "").strip()
+
+
+def _safe_emotion(media: Any) -> str:
+    ai = getattr(media, "ai_analysis", None) or {}
+    if not isinstance(ai, dict):
+        return ""
+    return str(ai.get("emotion") or "").strip()
+
+
+def _subject_center_y_ratio(media: Any) -> float | None:
+    ai = getattr(media, "ai_analysis", None) or {}
+    if not isinstance(ai, dict):
+        return None
+    box = ai.get("subject_box")
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    try:
+        ymin = float(box[0]) / 1000.0
+        ymax = float(box[2]) / 1000.0
+    except (TypeError, ValueError):
+        return None
+    cy = (ymin + ymax) / 2.0
+    return max(0.0, min(1.0, cy))
+
+
+def _build_emotional_caption(media: Any) -> str:
+    desc = _safe_description(media)
+    emo = _safe_emotion(media).lower()
+    is_ko = _is_korean_text(desc)
+    if is_ko:
+        ko_by_emotion = {
+            "joy": "작은 웃음, 큰 행복",
+            "excited": "설렘이 번지는 순간",
+            "romantic": "따뜻한 시선 한 장면",
+            "peaceful": "고요한 오늘의 빛",
+            "calm": "잔잔히 스민 온기",
+            "sad": "조용히 안아준 하루",
+        }
+        text = ko_by_emotion.get(emo, "")
+        if text:
+            return text[:15]
+        if desc:
+            return desc[:15]
+        return "오늘의 작은 기적"
+
+    en_by_emotion = {
+        "joy": "Softly in bloom",
+        "excited": "A bright heartbeat",
+        "romantic": "Held by warm light",
+        "peaceful": "Quietly we glow",
+        "calm": "A gentle pause",
+        "sad": "Still, we stay close",
+    }
+    text_en = en_by_emotion.get(emo, "")
+    if text_en:
+        return text_en[:18]
+    if desc:
+        compact = " ".join(desc.split())[:18]
+        return compact or "A tender frame"
+    return "A tender frame"
+
+
+def _apply_emotional_caption_metadata(
+    ordered_media: list[Any],
+    *,
+    project_seed: str | None,
+) -> None:
+    if not ordered_media:
+        return
+    # 앞표지는 제외. 나머지 슬롯 중 15% 내외만 노출.
+    eligible_indices = [i for i in range(1, len(ordered_media))]
+    if not eligible_indices:
+        return
+
+    seed_text = (project_seed or "caption-seed").strip()
+    rng = random.Random(seed_text)
+
+    desired = int(round(len(eligible_indices) * CAPTION_RATIO))
+    caption_count = max(1, min(len(eligible_indices), desired))
+    picked = set(rng.sample(eligible_indices, caption_count))
+    delay_pool = (520, 640, 780)
+
+    for i, media in enumerate(ordered_media):
+        show = i in picked
+        setattr(media, "show_caption", show)
+        if not show:
+            setattr(media, "caption_position", "")
+            setattr(media, "emotional_caption", "")
+            setattr(media, "caption_delay_ms", 0)
+            continue
+
+        position = "top" if rng.random() < 0.5 else "bottom"
+        cy = _subject_center_y_ratio(media)
+        # 피사체 중심과 겹치기 쉬운 방향은 반대편으로 스왑.
+        if cy is not None:
+            if position == "top" and cy <= 0.35:
+                position = "bottom"
+            elif position == "bottom" and cy >= 0.65:
+                position = "top"
+
+        caption_text = _build_emotional_caption(media)
+        setattr(media, "caption_position", position)
+        setattr(media, "emotional_caption", caption_text)
+        setattr(media, "caption_delay_ms", rng.choice(delay_pool))
+
+
 def select_cover_collage_candidates(
     media_files: list[Any],
     *,
@@ -185,6 +303,7 @@ class AlbumAIService:
         *,
         phash_similarity_threshold: float = PHASH_SIMILARITY_THRESHOLD,
         narrative_scores: dict[str, float] | None = None,
+        project_seed: str | None = None,
     ) -> list[Any]:
         """
         AI 모드 전처리(이미지 dedup -> 서사 정렬 -> 표지 배치).
@@ -308,5 +427,6 @@ class AlbumAIService:
             getattr(deduped[0], "id", None) if deduped else None,
             getattr(deduped[-1], "id", None) if deduped else None,
         )
+        _apply_emotional_caption_metadata(deduped, project_seed=project_seed)
         return deduped
 

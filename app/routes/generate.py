@@ -159,6 +159,7 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
             selected = AlbumAIService.preprocess_media_for_ai_mode(
                 sorted_media,
                 narrative_scores=narrative_scores,
+                project_seed=str(project_id),
             )
             curated = []
             for m in selected:
@@ -170,6 +171,10 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
                     "height": getattr(m, "height", None),
                     "ai_analysis": ai,
                     "media_id": getattr(m, "id", None),
+                    "show_caption": bool(getattr(m, "show_caption", False)),
+                    "caption_position": (getattr(m, "caption_position", "") or "").strip().lower(),
+                    "emotional_caption": (getattr(m, "emotional_caption", "") or "").strip(),
+                    "caption_delay_ms": int(getattr(m, "caption_delay_ms", 0) or 0),
                 })
             if not curated:
                 logger.warning("앨범 AI: 전처리 후 미디어 0건 (project_id=%s)", project_id)

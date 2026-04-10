@@ -262,6 +262,27 @@ def build_layout_ai(
             return ""
         return (item.get("lyrical_caption") or "").strip()[:200]
 
+    def emotional_meta_for_item(item: dict[str, Any]) -> dict[str, Any] | None:
+        show = bool(item.get("show_caption"))
+        text = (item.get("emotional_caption") or "").strip()
+        if not show or not text:
+            return None
+        pos = (item.get("caption_position") or "bottom").strip().lower()
+        if pos not in ("top", "bottom"):
+            pos = "bottom"
+        delay_raw = item.get("caption_delay_ms")
+        try:
+            delay_ms = int(delay_raw)
+        except (TypeError, ValueError):
+            delay_ms = 0
+        if delay_ms < 0:
+            delay_ms = 0
+        return {
+            "text": text[:40],
+            "position": pos,
+            "delay_ms": delay_ms,
+        }
+
     cover_title = (project_title or "디지털 앨범").strip()
 
     use_collage = False
@@ -328,6 +349,7 @@ def build_layout_ai(
             left_ft = (left_item.get("file_type") or "image").lower()
             left_st = _style_for_curated_dict(left_item, median, include_caption=True)
             left_cap = caption_for_item(left_item)
+            left_emotional = emotional_meta_for_item(left_item)
 
             if right_item is None:
                 out["pages"].append({
@@ -337,6 +359,7 @@ def build_layout_ai(
                     "right": None,
                     "styles": {"left": left_st, "right": None},
                     "captions": {"left": left_cap, "right": ""},
+                    "emotional_captions": {"left": left_emotional, "right": None},
                     "file_types": {"left": left_ft, "right": None},
                 })
             else:
@@ -344,6 +367,7 @@ def build_layout_ai(
                 right_ft = (right_item.get("file_type") or "image").lower()
                 right_st = _style_for_curated_dict(right_item, median, include_caption=True)
                 right_cap = caption_for_item(right_item)
+                right_emotional = emotional_meta_for_item(right_item)
                 out["pages"].append({
                     "type": "spread",
                     "template_type": "standard",
@@ -351,6 +375,7 @@ def build_layout_ai(
                     "right": right_path,
                     "styles": {"left": left_st, "right": right_st},
                     "captions": {"left": left_cap, "right": right_cap},
+                    "emotional_captions": {"left": left_emotional, "right": right_emotional},
                     "file_types": {"left": left_ft, "right": right_ft},
                 })
     else:
@@ -377,6 +402,7 @@ def build_layout_ai(
             left_path = path_at(left_i)
             left_ft = file_type_at(left_i)
             left_st = style_at(left_i)
+            left_emotional = emotional_meta_for_item(ordered[left_i])
             if right_i is None:
                 out["pages"].append({
                     "type": "spread",
@@ -385,6 +411,7 @@ def build_layout_ai(
                     "right": None,
                     "styles": {"left": left_st, "right": None},
                     "captions": {"left": left_cap, "right": ""},
+                    "emotional_captions": {"left": left_emotional, "right": None},
                     "file_types": {"left": left_ft, "right": None},
                 })
             else:
@@ -392,6 +419,7 @@ def build_layout_ai(
                 right_path = path_at(right_i)
                 right_ft = file_type_at(right_i)
                 right_st = style_at(right_i)
+                right_emotional = emotional_meta_for_item(ordered[right_i])
                 out["pages"].append({
                     "type": "spread",
                     "template_type": "standard",
@@ -399,6 +427,7 @@ def build_layout_ai(
                     "right": right_path,
                     "styles": {"left": left_st, "right": right_st},
                     "captions": {"left": left_cap, "right": right_cap},
+                    "emotional_captions": {"left": left_emotional, "right": right_emotional},
                     "file_types": {"left": left_ft, "right": right_ft},
                 })
 

@@ -1,5 +1,5 @@
 {# 앨범 뷰어 전용: 폰트+스타일 (HTMX 조각 삽입 시 적용) #}
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Nanum+Myeongjo&family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&family=Noto+Serif+KR:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@500;600&family=Montserrat:wght@700&family=Nanum+Myeongjo&family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;500&family=Noto+Serif+KR:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
     --a4-ratio: 1.414;
@@ -455,6 +455,49 @@
     font-family: "Playfair Display", "Nanum Myeongjo", "Noto Serif KR", serif;
     font-style: italic;
     font-weight: 400;
+  }
+  @keyframes emotionalCaptionIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .emotional-caption {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    max-width: 92%;
+    text-align: center;
+    line-height: 1.35;
+    letter-spacing: 0.02em;
+    color: #444444;
+    opacity: 0;
+    animation: emotionalCaptionIn 0.65s ease forwards;
+    pointer-events: none;
+  }
+  .emotional-caption.lang-en {
+    font-family: "Dancing Script", cursive;
+    font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+    font-weight: 600;
+    color: #5b4a4a;
+  }
+  .emotional-caption.lang-ko {
+    font-family: "Nanum Pen Script", "Nanum Handwriting", cursive;
+    font-size: clamp(1.2rem, 2.15vw, 1.45rem);
+    color: #333333;
+  }
+  .emotional-caption.landscape.top {
+    top: 4.5%;
+  }
+  .emotional-caption.landscape.bottom {
+    bottom: 4.5%;
+  }
+  .emotional-caption.portrait.top {
+    top: 10%;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.65), 0 2px 6px rgba(0,0,0,0.18);
+  }
+  .emotional-caption.portrait.bottom {
+    bottom: 10%;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.65), 0 2px 6px rgba(0,0,0,0.2);
   }
   /* 3D 리프: 하단 54px 세이프존에 자막·페이지 번호 고정 (컴팩트) */
   #bookBody .leaf-face-content .leaf-caption-bar,

@@ -127,7 +127,26 @@ window.initAlbumViewer = function () {
     return t;
   }
 
-  function slotHtml(mediaPath, styles, caption, fileType) {
+  function emotionalCaptionHtml(meta, styles) {
+    if (!meta || !meta.text) return "";
+    var pos = (meta.position === "top") ? "top" : "bottom";
+    var delay = Number(meta.delay_ms || 0);
+    if (!isFinite(delay) || delay < 0) delay = 0;
+    var isLandscape = !!(styles && (styles.needs_blur || styles.background_blur));
+    var text = String(meta.text || "").trim();
+    if (!text) return "";
+    var langCls = /[가-힣]/.test(text) ? "lang-ko" : "lang-en";
+    var shapeCls = isLandscape ? "landscape" : "portrait";
+    return (
+      '<div class="emotional-caption ' +
+      shapeCls + " " + pos + " " + langCls +
+      '" style="animation-delay:' + delay + 'ms">' +
+      escapeHtml(text) +
+      "</div>"
+    );
+  }
+
+  function slotHtml(mediaPath, styles, caption, fileType, emotionalMeta) {
     var url = toRawUrl(mediaPath);
     var isVideo = (fileType && fileType.toLowerCase() === "video") || isVideoPath(mediaPath);
     var hasFocus = !!focusXY(styles || {});
@@ -149,11 +168,12 @@ window.initAlbumViewer = function () {
         '<video class="slot-video" src="' + url + '" controls playsinline loop muted preload="metadata"></video>' +
         "</div>"
       : '<img class="slot-img ' + fitCls + '" src="' + url + '" alt="" loading="lazy" decoding="async"' + posStyle + " />";
-    // 하단 감성 자막은 임시 비활성화(추후 고도화 예정).
+    var emotionalPart = emotionalCaptionHtml(emotionalMeta || null, styles || {});
     return (
       '<div class="media-frame album-media-container">' +
       blurPart +
       mediaPart +
+      emotionalPart +
       "</div>"
     );
   }
@@ -442,14 +462,26 @@ window.initAlbumViewer = function () {
         '<div class="spread-half"' + leftStyle + ">" +
         '<div class="page-content">' +
         (page.left
-          ? slotHtml(page.left, (page.styles && page.styles.left) || {}, (page.captions && page.captions.left) || "", (page.file_types && page.file_types.left) || "")
+          ? slotHtml(
+              page.left,
+              (page.styles && page.styles.left) || {},
+              (page.captions && page.captions.left) || "",
+              (page.file_types && page.file_types.left) || "",
+              (page.emotional_captions && page.emotional_captions.left) || null
+            )
           : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
         "</div></div>";
       var rightHtml =
         '<div class="spread-half"' + rightStyle + ">" +
         '<div class="page-content">' +
         (page.right
-          ? slotHtml(page.right, (page.styles && page.styles.right) || {}, (page.captions && page.captions.right) || "", (page.file_types && page.file_types.right) || "")
+          ? slotHtml(
+              page.right,
+              (page.styles && page.styles.right) || {},
+              (page.captions && page.captions.right) || "",
+              (page.file_types && page.file_types.right) || "",
+              (page.emotional_captions && page.emotional_captions.right) || null
+            )
           : '<div class="media-frame media-frame-placeholder">빈 페이지</div>') +
         "</div></div>";
       return '<div class="spread-row">' + leftHtml + rightHtml + "</div>";
@@ -474,20 +506,22 @@ window.initAlbumViewer = function () {
   }
 
   function slotFromPageHalf(page, side) {
-    var path, styles, caption, ft;
+    var path, styles, caption, ft, emotional;
     if (side === "right") {
       path = page.right;
       styles = (page.styles && page.styles.right) || {};
       caption = (page.captions && page.captions.right) || (page.title || "") || "";
       ft = (page.file_types && page.file_types.right) || "";
+      emotional = (page.emotional_captions && page.emotional_captions.right) || null;
     } else {
       path = page.left;
       styles = (page.styles && page.styles.left) || {};
       caption = (page.captions && page.captions.left) || (page.caption || "") || "";
       ft = (page.file_types && page.file_types.left) || "";
+      emotional = (page.emotional_captions && page.emotional_captions.left) || null;
     }
     var media = path
-      ? slotHtml(path, styles, "", ft)
+      ? slotHtml(path, styles, "", ft, emotional)
       : '<div class="media-frame media-frame-placeholder"></div>';
     var emotion = (styles && styles.emotion) ? String(styles.emotion).trim().toLowerCase().replace(/\s+/g, "-") : "";
     var bgColorHex = (styles && styles.bg_color_hex) ? styles.bg_color_hex : null;
