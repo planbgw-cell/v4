@@ -236,6 +236,7 @@
     box-sizing: border-box;
     transform-style: preserve-3d;
     background-color: #ffffff;
+    contain: layout paint style;
   }
   .spread-row .page-content {
     flex-direction: column;
@@ -283,6 +284,14 @@
     background: #ffffff !important;
     padding: 0 !important;
   }
+  /* 블러 배경 img: 합성 레이어 힌트(정지 시 brightness·scale은 아래 규칙) */
+  .slot-blur {
+    will-change: transform, opacity;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-filter: blur(15px);
+    filter: blur(15px);
+  }
   /* 블러 배경: 세로/가로 모두 적용, A4 여백 침범 방지 */
   .leaf:not(.is-flipping) .slot-blur {
     position: absolute;
@@ -292,10 +301,13 @@
     height: 100%;
     object-fit: cover;
     filter: blur(15px) brightness(0.8);
+    -webkit-filter: blur(15px) brightness(0.8);
+    -webkit-transform: translate3d(0, 0, 0) scale(1.08);
     transform: translate3d(0, 0, 0) scale(1.08);
-    will-change: transform;
+    will-change: transform, opacity;
     image-rendering: -webkit-optimize-contrast;
     z-index: 0;
+    pointer-events: none;
   }
 
   .leaf:not(.is-flipping) .slot-blur-video {
@@ -354,7 +366,7 @@
     height: 100%;
     object-fit: contain;
     object-position: center;
-    z-index: 10;
+    z-index: 20;
     background: transparent;
   }
 
@@ -391,7 +403,7 @@
     object-fit: contain;
     object-position: center;
     background: #f8f8f8;
-    z-index: 1;
+    z-index: 20;
   }
 
   /* Floating Gallery (Portrait only): 블러 레이어 제거 */
@@ -984,9 +996,12 @@
     transition: transform 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
     pointer-events: none;
     will-change: transform;
+    /* paint 제외: contain paint는 preserve-3d 전파를 막아 넘김 애니메이션이 깨질 수 있음 */
+    contain: layout style;
   }
-  /* 애니메이션 중인 리프는 대역 계산보다 우선하여 최상단 유지 */
-  .leaf.is-flipping {
+  /* 애니메이션 중인 리프는 대역 계산보다 우선하여 최상단 유지 (JS는 is-flipping; 문서 별칭 flipping 동일 적용) */
+  .leaf.is-flipping,
+  .leaf.flipping {
     z-index: 9999 !important;
     will-change: transform;
   }
@@ -1033,17 +1048,18 @@
     transform-style: preserve-3d;
     transform: translate3d(0, 0, 0);
     overflow: hidden;
-    background: #F9F9F9;
+    background: #f0f0f0;
     box-shadow: inset 5px 0 10px rgba(0,0,0,0.05), 0 2px 12px rgba(0,0,0,0.08);
     box-sizing: border-box;
     transition: background-color 0.8s ease-in-out;
   }
   .leaf-face.front {
-    transform: translate3d(0, 0, 0.1px);
+    transform: translate3d(0, 0, 0.5px);
     border-radius: 0 4px 4px 0;
   }
   .leaf-face.back {
-    transform: rotateY(180deg) translate3d(0, 0, 0.2px);
+    -webkit-transform: translateZ(-0.5px) rotateY(180deg);
+    transform: translateZ(-0.5px) rotateY(180deg);
     border-radius: 4px 0 0 4px;
   }
   #bookBody .leaf-face-content {
@@ -1110,7 +1126,10 @@
   /* 넘김 중에만 고부하 시각 효과를 단순화 (정지 상태 좌/우 페이지는 블러 유지) */
   .leaf.is-flipping .slot-blur,
   .leaf.is-flipping .slot-blur-video,
-  .leaf.is-flipping .slot-blur-poster {
+  .leaf.is-flipping .slot-blur-poster,
+  .leaf.flipping .slot-blur,
+  .leaf.flipping .slot-blur-video,
+  .leaf.flipping .slot-blur-poster {
     filter: none !important;
     -webkit-filter: none !important;
     transition: filter 0.2s ease;

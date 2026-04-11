@@ -87,9 +87,24 @@
   function renderQrCode(url) {
     var wrap = document.getElementById("shareQrWrap");
     var canvas = document.getElementById("shareQrCanvas");
-    if (!wrap || !canvas || !window.QRCode || !window.QRCode.toCanvas) return;
+    if (!wrap || !canvas || !window.QRCode || !window.QRCode.toCanvas) {
+      showToast("QR 라이브러리를 불러올 수 없습니다.");
+      return;
+    }
     wrap.classList.remove("hidden");
-    window.QRCode.toCanvas(canvas, url, { width: 220, margin: 1 }, function () {});
+    try {
+      window.QRCode.toCanvas(canvas, url, { width: 220, margin: 1 }, function (err) {
+        if (err) {
+          console.warn("[Sharing] QRCode.toCanvas callback error:", err);
+          wrap.classList.add("hidden");
+          showToast("QR을 만들 수 없습니다.");
+        }
+      });
+    } catch (err) {
+      console.warn("[Sharing] QRCode.toCanvas failed:", err);
+      wrap.classList.add("hidden");
+      showToast("QR을 만들 수 없습니다.");
+    }
   }
 
   function init(options) {

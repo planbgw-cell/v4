@@ -17,6 +17,24 @@
     margin-right: auto;
     box-sizing: border-box;
   }
+  /* 앨범 열람 중: 좌측 스크롤 리스트 숨김 → GPU 레이어 부담 완화 */
+  #mypage-list-container.mypage-list-container--suspended {
+    display: none !important;
+  }
+  /* 앨범 3D: 독립 스태킹 문맥으로 헤더·내비와 합성 분리 */
+  #viewer-display-area.viewer-album-active {
+    position: relative;
+    isolation: isolate;
+    z-index: 40;
+  }
+  .mypage-shell.mypage-shell--album-mode .mypage-list-aside {
+    position: relative;
+    z-index: 1;
+  }
+  .mypage-shell.mypage-shell--album-mode .mypage-viewer-main {
+    position: relative;
+    z-index: 10;
+  }
 </style>
 {% endblock %}
 
@@ -24,9 +42,9 @@
 <div class="bg-white border-b border-gray-200 px-4 py-3">
   {% include "partials/header.html" %}
 </div>
-<div class="min-h-screen flex flex-col md:flex-row bg-gray-50">
+<div class="mypage-shell min-h-screen flex flex-col md:flex-row bg-gray-50">
   {# 좌측: 프로젝트 리스트 (데스크톱 30%, 모바일 상단 가로 스크롤 칩) #}
-  <aside class="w-full md:w-[30%] md:max-w-sm md:min-h-screen flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-white flex flex-col">
+  <aside class="mypage-list-aside w-full md:w-[30%] md:max-w-sm md:min-h-screen flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-white flex flex-col">
     <div class="p-4 border-b border-gray-100">
       <h1 class="text-xl font-semibold text-gray-800">내 보관함</h1>
     </div>
@@ -64,7 +82,7 @@
   </aside>
 
   {# 우측: 뷰어 영역 (HTMX 타겟) #}
-  <main class="flex-1 min-h-0 flex flex-col md:min-h-screen bg-gray-100">
+  <main class="mypage-viewer-main flex-1 min-h-0 flex flex-col md:min-h-screen bg-gray-100">
     <div id="viewer-display-area" class="flex-1 min-h-[50vh] md:min-h-0 flex items-center justify-center p-6 overflow-auto">
       <div class="text-center text-gray-500 max-w-sm">
         <p class="text-6xl mb-4" aria-hidden="true">👆</p>
@@ -80,15 +98,55 @@
 {% block scripts %}
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="/static/js/qrcode.min.js" defer></script>
 {% if kakao_js_key %}
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
 {% endif %}
-<script src="/static/js/album-viewer-init.js?v=4.1.1"></script>
+<script src="/static/js/album-viewer-init.js?v=4.1.4"></script>
 <script src="/static/js/sharing_module.js"></script>
 <script>
 (function () {
   var emptyStateHtml = '<div class="text-center text-gray-500 max-w-sm"><p class="text-6xl mb-4" aria-hidden="true">📭</p><p class="text-lg font-medium text-gray-600">아직 저장된 프로젝트가 없습니다</p><p class="text-sm mt-2">새 앨범이나 영상을 만들면 여기에 표시됩니다.</p></div>';
+
+  function restoreMypageAlbumChrome() {
+    var list = document.getElementById("mypage-list-container");
+    var area = document.getElementById("viewer-display-area");
+    var main = document.querySelector(".mypage-viewer-main");
+    var shell = document.querySelector(".mypage-shell");
+    if (list) {
+      list.classList.remove("mypage-list-container--suspended");
+      list.removeAttribute("aria-hidden");
+    }
+    if (area) {
+      area.classList.remove("viewer-album-active");
+    }
+    if (main) {
+      main.classList.remove("mypage-viewer-album-mode");
+    }
+    if (shell) {
+      shell.classList.remove("mypage-shell--album-mode");
+    }
+  }
+
+  function suspendMypageAlbumChrome() {
+    var list = document.getElementById("mypage-list-container");
+    var area = document.getElementById("viewer-display-area");
+    var main = document.querySelector(".mypage-viewer-main");
+    var shell = document.querySelector(".mypage-shell");
+    if (list) {
+      list.classList.add("mypage-list-container--suspended");
+      list.setAttribute("aria-hidden", "true");
+    }
+    if (area) {
+      area.classList.add("viewer-album-active");
+    }
+    if (main) {
+      main.classList.add("mypage-viewer-album-mode");
+    }
+    if (shell) {
+      shell.classList.add("mypage-shell--album-mode");
+    }
+  }
 
   document.body.addEventListener("htmx:afterSwap", function (ev) {
     var target = ev.detail && ev.detail.target;
@@ -96,6 +154,11 @@
     if (target && target.id === "viewer-display-area") {
       var hasViewerRoot = !!document.getElementById("viewerRoot");
       var hasFlipbookRoot = !!document.getElementById("flipbookRoot");
+      if (hasFlipbookRoot) {
+        suspendMypageAlbumChrome();
+      } else {
+        restoreMypageAlbumChrome();
+      }
       if (hasViewerRoot || hasFlipbookRoot) {
         target.classList.add("viewer-content-loaded");
       }
@@ -118,6 +181,7 @@
     if (left === 0) {
       var area = document.getElementById("viewer-display-area");
       if (area) {
+        restoreMypageAlbumChrome();
         area.innerHTML = emptyStateHtml;
         area.classList.remove("viewer-content-loaded");
         area.classList.add("flex", "items-center", "justify-center", "p-6");
