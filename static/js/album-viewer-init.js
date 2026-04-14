@@ -284,6 +284,8 @@ window.initAlbumViewer = function () {
   function captureVideoFrameToAmbientPoster(frame, video) {
     var posterImg = frame.querySelector("img.slot-blur-poster");
     if (!posterImg || !frame.classList.contains("is-landscape")) return;
+    // 모바일에서는 seek 기반 프레임 캡처를 비활성화해 재생 안정성을 우선한다.
+    if (!isDesktop()) return;
     var maxDim = 960;
     function drawAndAssign() {
       try {
@@ -305,45 +307,66 @@ window.initAlbumViewer = function () {
         console.warn("[Album] ambient poster capture failed (CORS/보안)", err);
       }
     }
-    var savedTime = video.currentTime;
-    var dur = video.duration;
-    var seekTo = 0.08;
-    if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
-      seekTo = Math.min(0.15, Math.max(0.04, dur * 0.02));
-    }
-    function afterSeek() {
-      drawAndAssign();
-      try {
-        video.currentTime = savedTime;
-      } catch (e) {}
-    }
-    function runSeek() {
-      try {
-        video.currentTime = seekTo;
-      } catch (e) {
-        drawAndAssign();
-        return;
+    try {
+      var savedTime = video.currentTime;
+      var dur = video.duration;
+      var seekTo = 0.08;
+      if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
+        seekTo = Math.min(0.15, Math.max(0.04, dur * 0.02));
       }
-      video.addEventListener(
-        "seeked",
-        function onSeeked() {
-          video.removeEventListener("seeked", onSeeked);
-          afterSeek();
-        },
-        { once: true, passive: true }
-      );
-    }
-    if (video.readyState >= 2) {
-      runSeek();
-    } else {
-      video.addEventListener(
-        "loadeddata",
-        function onLd() {
-          video.removeEventListener("loadeddata", onLd);
-          runSeek();
-        },
-        { once: true, passive: true }
-      );
+      function ensurePlayback() {
+        try {
+          video.muted = true;
+          var p = video.play();
+          if (p && typeof p.catch === "function") p.catch(function () {});
+        } catch (e) {}
+      }
+      function afterSeek() {
+        try {
+          drawAndAssign();
+        } finally {
+          try {
+            video.currentTime = savedTime;
+          } catch (e) {}
+          ensurePlayback();
+        }
+      }
+      function runSeek() {
+        try {
+          video.currentTime = seekTo;
+        } catch (e) {
+          drawAndAssign();
+          ensurePlayback();
+          return;
+        }
+        video.addEventListener(
+          "seeked",
+          function onSeeked() {
+            video.removeEventListener("seeked", onSeeked);
+            afterSeek();
+          },
+          { once: true, passive: true }
+        );
+      }
+      if (video.readyState >= 2) {
+        runSeek();
+      } else {
+        video.addEventListener(
+          "loadeddata",
+          function onLd() {
+            video.removeEventListener("loadeddata", onLd);
+            runSeek();
+          },
+          { once: true, passive: true }
+        );
+      }
+    } catch (err) {
+      console.warn("[Album] ambient poster pipeline failed", err);
+      try {
+        video.muted = true;
+        var pp = video.play();
+        if (pp && typeof pp.catch === "function") pp.catch(function () {});
+      } catch (e) {}
     }
   }
 
@@ -430,14 +453,27 @@ window.initAlbumViewer = function () {
   }
 
   function getPageLabel(page, index, total) {
-    if (page.type === "front") return "앞표지";
-    if (page.type === "back") return "뒷표지";
+    if (!page) return "";
+    if (index === 0 || page.type === "front") return "앞표지";
+    if (index === total - 1 || page.type === "back") return "뒷표지";
     if (page.type === "spread") {
       var leftPage = 2 * (index - 1) + 1;
-      var rightPage = 2 * (index - 1) + 2;
+      var rightPage = leftPage + 1;
       return leftPage + " / " + rightPage;
     }
-    return (index + 1) + " / " + total;
+    return String(index);
+  }
+
+  function getMobileSlotLabel(slot, slotIndex, totalSlots) {
+    if (!slot) return "";
+    if (slotIndex === 0 || slot.kind === "front") return "앞표지";
+    if (slotIndex === totalSlots - 1 || slot.kind === "back") return "뒷표지";
+    if (slot.kind === "half") {
+      // PC spread의 좌/우 페이지 번호와 모바일 싱글 번호를 동일하게 맞춘다.
+      var leftPage = 2 * (slot.pageIndex - 1) + 1;
+      return String(slot.side === "left" ? leftPage : (leftPage + 1));
+    }
+    return String(slotIndex);
   }
 
   function renderPageContent(page, index, total) {
@@ -645,6 +681,13 @@ window.initAlbumViewer = function () {
       img.setAttribute("decoding", "async");
       img.setAttribute("loading", "lazy");
     });
+    // 가상화 purge/inject를 위해 비디오 원본 src를 data-src에 보관한다.
+    leaf.querySelectorAll("video").forEach(function (v) {
+      var s = v.getAttribute("src");
+      if (s && !v.getAttribute("data-src")) {
+        v.setAttribute("data-src", s);
+      }
+    });
     return leaf;
   }
 
@@ -658,6 +701,15 @@ window.initAlbumViewer = function () {
       }
       img.setAttribute("decoding", "async");
       img.setAttribute("loading", isVisibleNow ? "eager" : "lazy");
+    });
+    leaf.querySelectorAll("video").forEach(function (v) {
+      var originalSrc = v.getAttribute("data-src");
+      if (originalSrc && !v.getAttribute("src")) {
+        v.setAttribute("src", originalSrc);
+        try {
+          v.load(); // src 복구 후 미디어 파이프라인 재초기화
+        } catch (e) {}
+      }
     });
   }
 
@@ -674,6 +726,10 @@ window.initAlbumViewer = function () {
       try {
         v.pause();
       } catch (e) {}
+      if (!v.getAttribute("data-src")) {
+        var curSrc = v.getAttribute("src");
+        if (curSrc) v.setAttribute("data-src", curSrc);
+      }
       v.removeAttribute("src");
       v.load();
     });
@@ -950,7 +1006,7 @@ window.initAlbumViewer = function () {
         getPageLabel(page, index, total) + " (" + (index + 1) + " / " + total + ")";
     } else {
       var mobileTotal = mobileSlots.length || 1;
-      if (pageIndicator) pageIndicator.textContent = (index + 1) + " / " + mobileTotal;
+      if (pageIndicator) pageIndicator.textContent = getMobileSlotLabel(mobileSlots[index], index, mobileTotal);
     }
     document.querySelectorAll(".thumb-item").forEach(function (el, i) {
       el.classList.toggle("active", i === index);
@@ -1137,7 +1193,7 @@ window.initAlbumViewer = function () {
     bar.innerHTML = "";
     var total = mobileSlots.length;
     mobileSlots.forEach(function (slot, i) {
-      var label = (i + 1) + " / " + total;
+      var label = getMobileSlotLabel(slot, i, total);
       var url = thumbUrlFromMobileSlot(slot);
       var isVid = false;
       if (slot.kind === "half") {

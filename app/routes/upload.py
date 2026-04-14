@@ -15,6 +15,7 @@ from app.crud import create_project
 from app.database import SessionLocal
 from app.models import MediaFile, ProjectMode
 from app.services.video_service import run_ai_analysis
+from app.services.web_video_compat import VideoTranscodeError, ensure_web_compatible_video
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
@@ -114,8 +115,21 @@ async def api_upload(
             stored_name = f"{uuid.uuid4().hex}_{safe_name}"
             out_path = project_raw_dir / stored_name
             out_path.write_bytes(content)
-            saved_paths.append(out_path)
-            file_path_str = str(Path("storage") / "raw" / str(project_id) / stored_name)
+            final_path = out_path
+            if is_video:
+                try:
+                    final_path = ensure_web_compatible_video(out_path)
+                except VideoTranscodeError as e:
+                    try:
+                        out_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"동영상 변환 실패(HEVC->H.264): {e!s}",
+                    ) from e
+            saved_paths.append(final_path)
+            file_path_str = str(Path("storage") / "raw" / str(project_id) / final_path.name)
             media_entries.append((file_path_str, file_type, order_index))
 
         # DB에 한 번에 기록 (순서 = order_index 그대로)
