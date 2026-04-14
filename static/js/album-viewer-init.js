@@ -550,7 +550,7 @@ window.initAlbumViewer = function () {
   var layout = null;
   var currentIndex = 0;
   var mobileSlots = [];
-  var MOBILE_BUFFER_RADIUS = 2;
+  var MOBILE_BUFFER_RADIUS = 3;
   var MOBILE_BREAKPOINT = 1024;
   var lastWidth = typeof window !== "undefined" ? window.innerWidth : 0;
   var lastDesktopMode = null;
@@ -695,6 +695,16 @@ window.initAlbumViewer = function () {
     if (!leaf) return;
     var idx = Number(leaf.dataset.leafIndex || "-1");
     var isVisibleNow = idx === centerIndex;
+    leaf.querySelectorAll(".leaf-face-content").forEach(function (content) {
+      var backup = content.getAttribute("data-media-backup");
+      if (!backup) return;
+      if (content.querySelector("img,video")) return;
+      try {
+        content.innerHTML = decodeURIComponent(backup);
+      } catch (e) {
+        console.warn("[Album] media backup restore failed", e);
+      }
+    });
     leaf.querySelectorAll("img[data-src]").forEach(function (img) {
       if (!img.getAttribute("src")) {
         img.setAttribute("src", img.getAttribute("data-src"));
@@ -711,45 +721,95 @@ window.initAlbumViewer = function () {
         } catch (e) {}
       }
     });
+    leaf.style.willChange = "transform";
   }
 
   function purgeLeafMedia(leaf) {
     if (!leaf) return;
-    leaf.querySelectorAll("img").forEach(function (img) {
-      img.removeAttribute("srcset");
-      if (img.getAttribute("src")) {
-        img.setAttribute("data-src", img.getAttribute("src"));
+    leaf.querySelectorAll(".leaf-face-content").forEach(function (content) {
+      if (!content.getAttribute("data-media-backup")) {
+        content.setAttribute("data-media-backup", encodeURIComponent(content.innerHTML));
       }
-      img.removeAttribute("src");
+      content.setAttribute("data-media-kind", "img-video");
     });
-    leaf.querySelectorAll("video").forEach(function (v) {
+    leaf.querySelectorAll("video, img").forEach(function (el) {
+      var tag = (el.tagName || "").toLowerCase();
+      var src = el.getAttribute("src");
+      if (src && !el.getAttribute("data-src")) {
+        el.setAttribute("data-src", src);
+      }
+      if (!el.getAttribute("data-type")) {
+        el.setAttribute("data-type", tag);
+      }
+      if (!el.getAttribute("data-class")) {
+        el.setAttribute("data-class", el.className || "");
+      }
       try {
-        v.pause();
+        if (tag === "video" && typeof el.pause === "function") el.pause();
       } catch (e) {}
-      if (!v.getAttribute("data-src")) {
-        var curSrc = v.getAttribute("src");
-        if (curSrc) v.setAttribute("data-src", curSrc);
-      }
-      v.removeAttribute("src");
-      v.load();
+      try {
+        el.setAttribute("src", "");
+      } catch (e) {}
+      try {
+        if (tag === "video" && typeof el.load === "function") {
+          el.load();
+        }
+      } catch (e) {}
+      try {
+        el.remove();
+      } catch (e) {}
     });
+    leaf.style.display = "none";
+    leaf.style.visibility = "hidden";
+    leaf.style.opacity = "0";
+    leaf.style.pointerEvents = "none";
+    leaf.style.willChange = "auto";
+  }
+
+  function countLeafMediaNodes(leaf) {
+    if (!leaf) return 0;
+    var c = 0;
+    leaf.querySelectorAll(".leaf-face-content").forEach(function (content) {
+      var backup = content.getAttribute("data-media-backup");
+      if (!backup) return;
+      try {
+        var html = decodeURIComponent(backup);
+        var matches = html.match(/<(img|video)\b/gi);
+        if (matches) c += matches.length;
+      } catch (e) {}
+    });
+    return c;
   }
 
   function renderMobileWindow(centerIndex) {
     var bookBodyEl = document.getElementById("bookBody");
     if (!bookBodyEl || !mobileSlots.length) return;
     var total = mobileSlots.length;
+    var dbgInject = 0;
+    var dbgRemovedNodes = 0;
     for (var i = 0; i < total; i++) {
       var leaf = bookBodyEl.querySelector('.leaf-mobile[data-leaf-index="' + i + '"]');
       if (!leaf) continue;
       var inBuf = i >= centerIndex - MOBILE_BUFFER_RADIUS && i <= centerIndex + MOBILE_BUFFER_RADIUS;
       if (inBuf) {
         leaf.style.display = "";
+        leaf.style.visibility = "visible";
+        leaf.style.opacity = "1";
+        leaf.style.pointerEvents = "";
         injectLeafMedia(leaf, centerIndex);
+        dbgInject++;
       } else {
-        leaf.style.display = "none";
+        dbgRemovedNodes += countLeafMediaNodes(leaf);
         purgeLeafMedia(leaf);
       }
+    }
+    if (window.__ALBUM_DEBUG__) {
+      console.log(
+        "[DEBUG] renderMobileWindow center=%s inject=%s removedMediaNodes=%s",
+        centerIndex,
+        dbgInject,
+        dbgRemovedNodes
+      );
     }
   }
 
@@ -1361,13 +1421,20 @@ window.initAlbumViewer = function () {
         var sampleUrl = segment ? "/raw/" + projectId + "/" + segment : firstPath;
         console.log("[Album] First image URL sample (check Network for 200):", sampleUrl);
       }
-      var flipbookStateEl = document.getElementById("flipbookState");
-      if (flipbookStateEl) flipbookStateEl.classList.remove("hidden");
       console.log("[Album] mobileSlots + checkLayout + showPage(0)");
       mobileSlots = buildMobileSlots(layout.pages);
       lastDesktopMode = null;
       checkLayout();
       showPage(0);
+      var flipbookStateEl = document.getElementById("flipbookState");
+      // 첫 leaf/media 주입 프레임 이후 노출해 초기 깜빡임을 줄인다.
+      if (flipbookStateEl) {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            flipbookStateEl.classList.remove("hidden");
+          });
+        });
+      }
       console.log("[Album] Init complete (last log) — if you see this, engine ran to the end.");
     })
     .catch(function (err) {

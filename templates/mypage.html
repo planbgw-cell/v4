@@ -164,8 +164,12 @@
       }
       var hasInit = typeof window.initAlbumViewer === "function";
       if (hasInit && hasFlipbookRoot) {
-        console.log("[Album] Album engine re-ignited (calling initAlbumViewer after tick)");
-        setTimeout(function () { window.initAlbumViewer(); }, 0);
+        console.log("[Album] Album engine re-ignited (calling initAlbumViewer after 2x RAF)");
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            window.initAlbumViewer();
+          });
+        });
       } else if (!hasFlipbookRoot) {
         console.warn("[Album] Skip init: flipbookRoot=" + hasFlipbookRoot + ", initAlbumViewer=" + hasInit);
       }

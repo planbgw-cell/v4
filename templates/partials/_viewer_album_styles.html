@@ -1015,6 +1015,7 @@
     left: 0 !important;
     transform-origin: left center !important;
     transform-style: preserve-3d !important;
+    transition: opacity 0.18s ease-out, visibility 0s linear 0.18s;
   }
   @media (max-width: 1023px) {
     .leaf-mobile.flipped {
@@ -1132,6 +1133,7 @@
   .leaf.flipping .slot-blur-poster {
     filter: none !important;
     -webkit-filter: none !important;
+    display: none !important;
     transition: filter 0.2s ease;
     background: #f0f0f0 !important;
     opacity: 0 !important;
