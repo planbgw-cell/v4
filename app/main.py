@@ -124,6 +124,21 @@ def _project_media_thumb_url(project_id: str, media_files) -> str | None:
     return None
 
 
+def _project_album_share_image_url(project_id: str, media_files) -> str | None:
+    media_files = media_files or []
+    for media in media_files:
+        file_type = (getattr(media, "file_type", "") or "").lower()
+        if file_type != "image":
+            continue
+        file_path = getattr(media, "file_path", None)
+        if not file_path:
+            continue
+        parts = file_path.replace("\\", "/").strip("/").split("/")
+        if len(parts) >= 4 and parts[0] == "storage" and parts[1] == "raw":
+            return f"/api/media/image/{project_id}/{quote(parts[-1])}?w=800"
+    return None
+
+
 def _absolute_url(request: Request, relative_path: str | None) -> str | None:
     if not relative_path:
         return None
@@ -146,6 +161,8 @@ def _build_share_meta(
         "title": og_title,
         "description": og_desc,
         "image": _absolute_url(request, og_image),
+        "image_width": "800",
+        "image_height": "1200",
         "url": _absolute_url(request, share_path),
         "type": "website",
     }
@@ -296,7 +313,10 @@ async def viewer_page(
             logger.info("[Album Viewer] project_id=%s media_count=%s", project_id, len(media_files))
         title = project.title or _project_title_by_type(type)
         video_url = _project_video_url(type, project_id, project.output_path)
-        thumb_url = _project_media_thumb_url(project_id, getattr(project, "media_files", None))
+        media_files = getattr(project, "media_files", None)
+        thumb_url = _project_media_thumb_url(project_id, media_files)
+        if type == "album":
+            thumb_url = _project_album_share_image_url(project_id, media_files) or thumb_url
     finally:
         db.close()
     ctx = {
@@ -351,7 +371,10 @@ async def share_viewer_page(
             project_mode = "rule_based"
         title = project.title or _project_title_by_type(type)
         video_url = _project_video_url(type, project_id, project.output_path)
-        thumb_url = _project_media_thumb_url(project_id, getattr(project, "media_files", None))
+        media_files = getattr(project, "media_files", None)
+        thumb_url = _project_media_thumb_url(project_id, media_files)
+        if type == "album":
+            thumb_url = _project_album_share_image_url(project_id, media_files) or thumb_url
     finally:
         db.close()
     ctx = {

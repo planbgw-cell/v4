@@ -1,11 +1,43 @@
 (function (window, document) {
+  // Kakao Web 플랫폼 등록 도메인과 동일한 기본값(필요 시 init({siteDomain})로 덮어쓰기).
+  var SITE_DOMAIN = "http://121.133.47.184:8000";
+
   function getOrigin() {
     return window.location.origin;
   }
 
-  function buildShareUrl(projectType, projectId) {
+  function getSiteDomain(options) {
+    var configured = options && options.siteDomain ? String(options.siteDomain).trim() : "";
+    var base = configured || SITE_DOMAIN || getOrigin();
+    return base.replace(/\/+$/, "");
+  }
+
+  function normalizeAbsoluteUrl(url) {
+    if (!url) return "";
+    var s = String(url).trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith("//")) return window.location.protocol + s;
+    if (s.startsWith("/")) return getOrigin() + s;
+    return getOrigin() + "/" + s;
+  }
+
+  function buildViewerUrl(projectType, projectId, options) {
+    var base = getSiteDomain(options);
     var type = (projectType === "album") ? "album" : "video";
-    return getOrigin() + "/share/" + type + "/" + encodeURIComponent(projectId || "");
+    return base + "/viewer/" + type + "/" + encodeURIComponent(projectId || "");
+  }
+
+  function buildShareUrl(projectType, projectId, options) {
+    var base = getSiteDomain(options);
+    var type = (projectType === "album") ? "album" : "video";
+    return base + "/share/" + type + "/" + encodeURIComponent(projectId || "");
+  }
+
+  function buildDefaultShareImage(projectType, projectId, imageUrl, options) {
+    var normalized = normalizeAbsoluteUrl(imageUrl || "");
+    if (normalized) return normalized;
+    return "";
   }
 
   function legacyCopy(text) {
@@ -111,6 +143,7 @@
     options = options || {};
     var kakaoJsKey = options.kakaoJsKey || "";
     var fallbackImageUrl = options.fallbackImageUrl || "";
+    var siteDomain = getSiteDomain(options);
 
     var modal = document.getElementById("shareModal");
     var backdrop = document.getElementById("shareModalBackdrop");
@@ -131,8 +164,8 @@
       projectId: "",
       projectType: "video",
       title: "Flairy",
-      url: window.location.href,
-      imageUrl: fallbackImageUrl
+      url: siteDomain + "/",
+      imageUrl: normalizeAbsoluteUrl(fallbackImageUrl)
     };
 
     function closeModal() {
@@ -148,10 +181,16 @@
       state.projectId = pid;
       state.projectType = ptype;
       state.title = ptitle;
-      state.url = buildShareUrl(ptype, pid);
-      state.imageUrl = (btn && btn.getAttribute("data-share-image")) || fallbackImageUrl || "";
+      state.url = buildShareUrl(ptype, pid, { siteDomain: siteDomain });
+      state.imageUrl = buildDefaultShareImage(
+        ptype,
+        pid,
+        (btn && btn.getAttribute("data-share-image")) || fallbackImageUrl || "",
+        { siteDomain: siteDomain }
+      );
 
       console.log("[Sharing] generated share URL:", state.url);
+      console.log("[Sharing] generated image URL:", state.imageUrl);
 
       if (titleEl) titleEl.textContent = ptitle;
       if (urlEl) urlEl.textContent = state.url;
@@ -185,10 +224,10 @@
         }
         sendKakao({
           title: state.title,
-          description: "Flairy에서 생성된 콘텐츠를 확인해보세요.",
-          imageUrl: state.imageUrl,
-          fallbackImageUrl: fallbackImageUrl,
-          url: state.url
+          description: "Flairy에서 생성된 디지털 앨범입니다.",
+          imageUrl: normalizeAbsoluteUrl(state.imageUrl),
+          fallbackImageUrl: normalizeAbsoluteUrl(fallbackImageUrl),
+          url: normalizeAbsoluteUrl(state.url)
         });
       });
     }
