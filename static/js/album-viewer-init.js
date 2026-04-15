@@ -494,8 +494,9 @@ window.initAlbumViewer = function () {
     });
 
     container.querySelectorAll(".media-frame video.slot-video").forEach(function (video) {
+      /* 비디오(및 네이티브 컨트롤)만 버블 차단. .media-frame 전체 stopPropagation은
+         모바일에서 레터박스·여백 탭이 #bookBody까지 올라가지 않아 페이지 전환이 막힌다. */
       video.addEventListener("click", function (e) { e.stopPropagation(); }, { passive: true });
-      video.closest(".media-frame").addEventListener("click", function (e) { e.stopPropagation(); }, { passive: true });
 
       video.addEventListener("loadedmetadata", function () {
         var w = video.videoWidth || 0;
@@ -1688,6 +1689,26 @@ window.initAlbumViewer = function () {
       { passive: true }
     );
   }
+
+  (function bindMobileBookBodyPageTurn() {
+    var bb = document.getElementById("bookBody");
+    if (!bb) return;
+    if (bb.__albumMobileNavHandler) {
+      bb.removeEventListener("click", bb.__albumMobileNavHandler);
+      bb.__albumMobileNavHandler = null;
+    }
+    bb.__albumMobileNavHandler = function (e) {
+      if (isDesktop()) return;
+      if (e.target.closest("video.slot-video")) return;
+      if (!bb.contains(e.target)) return;
+      var rect = bb.getBoundingClientRect();
+      if (!(rect.width > 0)) return;
+      var mid = rect.left + rect.width / 2;
+      if (e.clientX < mid) goPrev();
+      else goNext();
+    };
+    bb.addEventListener("click", bb.__albumMobileNavHandler, { passive: true });
+  })();
 
   window.addEventListener(
     "resize",
