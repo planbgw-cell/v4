@@ -43,6 +43,7 @@ def delete_project_storage(project_id: UUID, base_dir: Path | None = None) -> No
         ("raw", root / "storage" / "raw" / str(project_id)),
         ("final", root / "storage" / "final" / str(project_id)),
         ("temp", root / "storage" / "temp" / str(project_id)),
+        ("thumbnails", root / "storage" / "thumbnails" / str(project_id)),
     ]:
         if dir_path.exists() and dir_path.is_dir():
             try:

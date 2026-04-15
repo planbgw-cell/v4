@@ -26,6 +26,11 @@ window.initAlbumViewer = function () {
     return;
   }
 
+  projectId = String(projectId).trim();
+
+  /** 앨범 뷰어: 좁은 뷰포트에서만 저해상도 이미지 API 사용 */
+  var isMobileAlbum = typeof window.innerWidth === "number" && window.innerWidth < 768;
+
   if (albumVideoObserver) {
     albumVideoObserver.disconnect();
     albumVideoObserver = null;
@@ -51,6 +56,93 @@ window.initAlbumViewer = function () {
     var match = path.match(/^storage\/raw\/[^/]+\/(.+)$/);
     if (match) return "/raw/" + projectId + "/" + match[1];
     return path.startsWith("/") ? path : "/raw/" + projectId + "/" + path;
+  }
+
+  var MOBILE_ALBUM_IMG_CAP = 1080;
+
+  function rawFilenameFromStoragePath(path) {
+    if (!path) return "";
+    var match = path.match(/^storage\/raw\/[^/]+\/(.+)$/);
+    if (match) return match[1];
+    if (path.indexOf("/") === -1 && path.indexOf("\\") === -1) return path;
+    return "";
+  }
+
+  function isRasterImageFilename(name) {
+    var s = (name || "").split(/[\\/]/).pop() || "";
+    var ext = (s.split(".").pop() || "").toLowerCase();
+    return (
+      ext === "jpg" ||
+      ext === "jpeg" ||
+      ext === "png" ||
+      ext === "webp" ||
+      ext === "heic" ||
+      ext === "heif" ||
+      ext === "bmp" ||
+      ext === "tif" ||
+      ext === "tiff"
+    );
+  }
+
+  /**
+   * 리사이즈 이미지 API URL. projectId·filename 모두 경로에 포함(각각 encodeURIComponent).
+   * opts.thumb → w=320, opts.w → 해당 너비(1~1080), 없으면 DPR·뷰포트 기반 너비(최대 1080).
+   */
+  function toAlbumImageUrl(pid, filename, opts) {
+    opts = opts || {};
+    if (!filename || !pid) return "";
+    var p = String(pid).trim();
+    var w;
+    if (opts.thumb) {
+      w = 320;
+    } else if (typeof opts.w === "number" && isFinite(opts.w)) {
+      w = Math.min(MOBILE_ALBUM_IMG_CAP, Math.max(1, Math.round(opts.w)));
+    } else {
+      w = MOBILE_ALBUM_IMG_CAP;
+    }
+    return (
+      "/api/media/image/" +
+      encodeURIComponent(p) +
+      "/" +
+      encodeURIComponent(filename) +
+      "?w=" +
+      w
+    );
+  }
+
+  /** storage 경로 또는 파일명만 → 모바일이면 API URL, 아니면 /raw */
+  function toAlbumImageUrlFromStoragePath(path, opts) {
+    if (!path || !isMobileAlbum || isVideoPath(path) || !projectId) return toRawUrl(path);
+    var fn = rawFilenameFromStoragePath(path);
+    if (!fn || !isRasterImageFilename(fn)) return toRawUrl(path);
+    return toAlbumImageUrl(projectId, fn, opts);
+  }
+
+  function albumImageAttrsString(path, opts) {
+    opts = opts || {};
+    if (!path || !isMobileAlbum || isVideoPath(path) || !projectId) return { src: toRawUrl(path) };
+    var fn = rawFilenameFromStoragePath(path);
+    if (!fn || !isRasterImageFilename(fn)) return { src: toRawUrl(path) };
+    if (opts.thumb) {
+      return { src: toAlbumImageUrl(projectId, fn, { thumb: true }) };
+    }
+    var base =
+      "/api/media/image/" +
+      encodeURIComponent(projectId) +
+      "/" +
+      encodeURIComponent(fn);
+    var srcset =
+      base + "?w=640 640w, " + base + "?w=960 960w, " + base + "?w=1080 1080w";
+    return { src: base + "?w=960", srcset: srcset, sizes: "100vw" };
+  }
+
+  function albumImgOpeningAttrs(path, opts) {
+    var a = albumImageAttrsString(path, opts || {});
+    var out = ' src="' + a.src + '"';
+    if (a.srcset) {
+      out += ' srcset="' + a.srcset + '" sizes="' + (a.sizes || "100vw") + '"';
+    }
+    return out;
   }
 
   function isVideoPath(path) {
@@ -155,7 +247,9 @@ window.initAlbumViewer = function () {
     var blurY = (hasFocus && isBlurBg) ? -1.2 : 0;
     var blurPart = isVideo
       ? ""
-      : '<img class="slot-blur" src="' + url + '" alt="" loading="lazy" decoding="async"' +
+      : '<img class="slot-blur"' +
+        albumImgOpeningAttrs(mediaPath) +
+        ' alt="" loading="lazy" decoding="async"' +
         focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
         " />";
     var posStyle = hasFocus ? focusStyleAttr(styles || {}, { includeTransformOrigin: true, yNudgePct: (isBlurBg ? -0.6 : 0) }) : "";
@@ -167,7 +261,13 @@ window.initAlbumViewer = function () {
         " />" +
         '<video class="slot-video" src="' + url + '" controls muted playsinline autoplay loop preload="auto"></video>' +
         "</div>"
-      : '<img class="slot-img ' + fitCls + '" src="' + url + '" alt="" loading="lazy" decoding="async"' + posStyle + " />";
+      : '<img class="slot-img ' +
+        fitCls +
+        '"' +
+        albumImgOpeningAttrs(mediaPath) +
+        ' alt="" loading="lazy" decoding="async"' +
+        posStyle +
+        " />";
     var emotionalPart = emotionalCaptionHtml(emotionalMeta || null, styles || {});
     return (
       '<div class="media-frame album-media-container">' +
@@ -187,7 +287,9 @@ window.initAlbumViewer = function () {
     var blurY = (hasFocus && isBlurBg) ? -1.2 : 0;
     var blurPart = isVideo
       ? ""
-      : '<img class="cover-bg-blur" src="' + url + '" alt="" loading="lazy" decoding="async" aria-hidden="true"' +
+      : '<img class="cover-bg-blur"' +
+        albumImgOpeningAttrs(mediaPath) +
+        ' alt="" loading="lazy" decoding="async" aria-hidden="true"' +
         focusStyleAttr(styles || {}, { yNudgePct: blurY }) +
         " />";
     var mediaPart = isVideo
@@ -197,7 +299,11 @@ window.initAlbumViewer = function () {
         " />" +
         '<video class="slot-video" src="' + url + '" controls muted playsinline autoplay loop preload="auto"></video>' +
         "</div>"
-      : '<img class="slot-img ' + (hasFocus ? "cover ai-subject" : "contain") + '" src="' + url + '" alt="" loading="lazy" decoding="async"' +
+      : '<img class="slot-img ' +
+        (hasFocus ? "cover ai-subject" : "contain") +
+        '"' +
+        albumImgOpeningAttrs(mediaPath) +
+        ' alt="" loading="lazy" decoding="async"' +
         (hasFocus ? focusStyleAttr(styles || {}, { includeTransformOrigin: true, yNudgePct: (isBlurBg ? -0.6 : 0) }) : "") +
         " />";
     var overlayTitle = formatRuleBasedCoverTitle(title);
@@ -223,7 +329,6 @@ window.initAlbumViewer = function () {
     for (var j = 0; j < assets.length; j++) {
       var a = assets[j];
       var styles = a.styles || {};
-      var url = toRawUrl(a.path || "");
       var isLast = j === assets.length - 1;
       var hasFocus = !!focusXY(styles);
       var cls = "polaroid-img";
@@ -237,9 +342,9 @@ window.initAlbumViewer = function () {
         '">' +
         '<img class="' +
         cls +
-        '" src="' +
-        url +
-        '" alt="" loading="lazy" decoding="async"' +
+        '"' +
+        albumImgOpeningAttrs(a.path || "") +
+        ' alt="" loading="lazy" decoding="async"' +
         posStyle +
         " />" +
         "</figure>";
@@ -706,8 +811,43 @@ window.initAlbumViewer = function () {
       }
     });
     leaf.querySelectorAll("img[data-src]").forEach(function (img) {
+      var ds = img.getAttribute("data-src");
+      if (!ds) return;
       if (!img.getAttribute("src")) {
-        img.setAttribute("src", img.getAttribute("data-src"));
+        if (isMobileAlbum) {
+          var pid = "";
+          var fn = "";
+          var rmRaw = ds.match(/^\/raw\/([^/]+)\/([^?#]+)$/);
+          if (rmRaw) {
+            pid = String(rmRaw[1]).trim();
+            fn = decodeURIComponent(rmRaw[2]);
+          } else {
+            var rmApi = ds.match(/^\/api\/media\/image\/([^/]+)\/([^?#]+)/);
+            if (rmApi) {
+              pid = decodeURIComponent(rmApi[1]).trim();
+              fn = decodeURIComponent(rmApi[2]);
+            }
+          }
+          if (pid && fn && isRasterImageFilename(fn)) {
+            img.setAttribute("src", toAlbumImageUrl(pid, fn, { w: 960 }));
+            img.setAttribute(
+              "srcset",
+              toAlbumImageUrl(pid, fn, { w: 640 }) +
+                " 640w, " +
+                toAlbumImageUrl(pid, fn, { w: 960 }) +
+                " 960w, " +
+                toAlbumImageUrl(pid, fn, { w: 1080 }) +
+                " 1080w"
+            );
+            img.setAttribute("sizes", "100vw");
+          } else {
+            img.setAttribute("src", ds);
+          }
+        } else {
+          img.removeAttribute("srcset");
+          img.removeAttribute("sizes");
+          img.setAttribute("src", ds);
+        }
       }
       img.setAttribute("decoding", "async");
       img.setAttribute("loading", isVisibleNow ? "eager" : "lazy");
@@ -1239,10 +1379,21 @@ window.initAlbumViewer = function () {
 
   function thumbUrlFromMobileSlot(slot) {
     if (!slot) return "";
-    if (slot.kind === "front") return slot.page.right ? toRawUrl(slot.page.right) : "";
+    if (slot.kind === "front") {
+      var pr = slot.page.right;
+      if (!pr) return "";
+      var ftr = slot.page.file_types && slot.page.file_types.right;
+      if (isVideoType(ftr) || isVideoPath(pr)) return toRawUrl(pr);
+      return toAlbumImageUrlFromStoragePath(pr, { thumb: true });
+    }
     if (slot.kind === "half") {
       var p = slot.side === "left" ? slot.page.left : slot.page.right;
-      return p ? toRawUrl(p) : "";
+      if (!p) return "";
+      var ft = slot.side === "left"
+        ? (slot.page.file_types && slot.page.file_types.left)
+        : (slot.page.file_types && slot.page.file_types.right);
+      if (isVideoType(ft) || isVideoPath(p)) return toRawUrl(p);
+      return toAlbumImageUrlFromStoragePath(p, { thumb: true });
     }
     return "";
   }

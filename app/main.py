@@ -49,6 +49,7 @@ from app.routes import project as project_router
 from app.routes import upload as upload_router
 from app.routes import status as status_router
 from app.routes import generate as generate_router
+from app.routes import media as media_router
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -79,6 +80,7 @@ app.include_router(project_router.router)
 app.include_router(upload_router.router)
 app.include_router(status_router.router)
 app.include_router(generate_router.router)
+app.include_router(media_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
