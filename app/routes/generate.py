@@ -11,11 +11,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from app.crud import get_project, update_project_output_path, update_project_status
+from app.crud import (
+    get_latest_video_task_by_project,
+    get_project,
+    mark_video_task_status,
+    update_project_output_path,
+    update_project_status,
+)
 from app.database import SessionLocal
 from app.storage import get_project_final_dir
 from app.services import narrative_service
 from app.services.album_service import AlbumAIService
+from app.services.notification_service import send_task_completion_alert
 from app.services.video_service import run_ai_analysis
 from app.utils.color_utils import get_accent_color_hex, get_dominant_color_hex
 from engine.album_engine import build_layout, build_layout_ai, save_album_layout
@@ -73,30 +80,47 @@ def _run_generate_task(project_id_str: str) -> None:
         update_project_status(db, project_id, "GENERATING")
         project = get_project(db, project_id)
         project_type = getattr(project, "project_type", None) or "video"
+        task = get_latest_video_task_by_project(db, project_id)
+        if task:
+            mark_video_task_status(
+                db,
+                task.task_id,
+                status="GENERATING",
+                current_msg="고화질 영상을 굽는 중입니다. 거의 다 됐어요!",
+            )
     finally:
         db.close()
 
     # 앨범 전용: VideoEngine 호출 금지. album_engine.build_layout() → album_layout.json만 생성
     if project_type == "album":
         logger.info("앨범 레이아웃 구성 중: project_id=%s (VideoEngine 미호출)", project_id)
-        _run_album_task(project_id_str, project_id, project)
+        _run_album_task(project_id_str, project_id)
         return
 
     # 하이라이트 영상 전용: FlairyVideoEngine만 사용 (앨범 분기 위에서 return 되었음)
-    use_ai = _is_ai_mode(project) if project else False
-    if use_ai and project:
-        valid, missing_ids = validate_ai_data(project)
-        if not valid:
-            logger.error(
-                "Pre-render validation failed: AI data missing for media_ids=%s. Aborting.",
-                missing_ids,
-            )
-            db = SessionLocal()
-            try:
+    db = SessionLocal()
+    try:
+        project = get_project(db, project_id)
+        use_ai = _is_ai_mode(project) if project else False
+        if use_ai and project:
+            valid, missing_ids = validate_ai_data(project)
+            if not valid:
+                logger.error(
+                    "Pre-render validation failed: AI data missing for media_ids=%s. Aborting.",
+                    missing_ids,
+                )
                 update_project_status(db, project_id, "FAILED")
-            finally:
-                db.close()
-            return
+                task = get_latest_video_task_by_project(db, project_id)
+                if task:
+                    mark_video_task_status(
+                        db,
+                        task.task_id,
+                        status="FAILED",
+                        current_msg="작업 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                    )
+                return
+    finally:
+        db.close()
     logger.info("영상 생성 시작: project_id=%s use_ai=%s", project_id, use_ai)
     try:
         engine = FlairyVideoEngine(project_id, ROOT)
@@ -112,8 +136,24 @@ def _run_generate_task(project_id_str: str) -> None:
         output_path_str = str(Path("storage") / "final" / str(project_id) / "output.mp4")
         db = SessionLocal()
         try:
+            task = get_latest_video_task_by_project(db, project_id)
+            if task:
+                mark_video_task_status(
+                    db,
+                    task.task_id,
+                    status="GENERATING",
+                    current_msg="마지막 디테일을 점검하고 있습니다...",
+                )
             update_project_output_path(db, project_id, output_path_str)
             update_project_status(db, project_id, "COMPLETED")
+            if task:
+                mark_video_task_status(
+                    db,
+                    task.task_id,
+                    status="COMPLETED",
+                    current_msg="생성이 완료되었습니다.",
+                )
+                send_task_completion_alert(task.task_id, task.notify_target)
         finally:
             db.close()
         logger.info("영상 생성 완료: %s", final_path)
@@ -122,6 +162,14 @@ def _run_generate_task(project_id_str: str) -> None:
         db = SessionLocal()
         try:
             update_project_status(db, project_id, "FAILED")
+            task = get_latest_video_task_by_project(db, project_id)
+            if task:
+                mark_video_task_status(
+                    db,
+                    task.task_id,
+                    status="FAILED",
+                    current_msg="작업 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                )
         except Exception:
             pass
         finally:
@@ -132,9 +180,17 @@ def _run_generate_task(project_id_str: str) -> None:
 MIN_ALBUM_MEDIA_FILES = 5
 
 
-def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
+def _run_album_task(project_id_str: str, project_id: UUID) -> None:
     """앨범 설계도 생성: order_index 정렬 미디어 → build_layout 또는 build_layout_ai → album_layout.json 저장."""
     try:
+        db = SessionLocal()
+        try:
+            project = get_project(db, project_id)
+        finally:
+            db.close()
+        if not project:
+            logger.warning("앨범 프로젝트를 찾을 수 없음: project_id=%s", project_id)
+            return
         media_files = getattr(project, "media_files", None) or []
         sorted_media = sorted(media_files, key=lambda m: getattr(m, "order_index", 0))
         if len(sorted_media) < MIN_ALBUM_MEDIA_FILES:
@@ -147,6 +203,14 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
             db = SessionLocal()
             try:
                 update_project_status(db, project_id, "FAILED")
+                task = get_latest_video_task_by_project(db, project_id)
+                if task:
+                    mark_video_task_status(
+                        db,
+                        task.task_id,
+                        status="FAILED",
+                        current_msg="작업 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                    )
             finally:
                 db.close()
             return
@@ -261,6 +325,15 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
         try:
             update_project_output_path(db, project_id, output_path_str)
             update_project_status(db, project_id, "COMPLETED")
+            task = get_latest_video_task_by_project(db, project_id)
+            if task:
+                mark_video_task_status(
+                    db,
+                    task.task_id,
+                    status="COMPLETED",
+                    current_msg="생성이 완료되었습니다.",
+                )
+                send_task_completion_alert(task.task_id, task.notify_target)
         finally:
             db.close()
         logger.info("앨범 설계도 생성 완료: project_id=%s", project_id)
@@ -269,6 +342,14 @@ def _run_album_task(project_id_str: str, project_id: UUID, project) -> None:
         db = SessionLocal()
         try:
             update_project_status(db, project_id, "FAILED")
+            task = get_latest_video_task_by_project(db, project_id)
+            if task:
+                mark_video_task_status(
+                    db,
+                    task.task_id,
+                    status="FAILED",
+                    current_msg="작업 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                )
         except Exception:
             pass
         finally:

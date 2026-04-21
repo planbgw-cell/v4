@@ -5,6 +5,8 @@ PostgreSQL 15. UUID, JSONB 사용. SQLAlchemy + 로컬 PostgreSQL.
 import enum
 import uuid
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -73,3 +75,36 @@ class MediaFile(Base):
     height = Column(Integer, nullable=True)
 
     project = relationship("Project", back_populates="media_files")
+
+
+def _default_expires_at() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(hours=48)
+
+
+class VideoTask(Base):
+    __tablename__ = "video_tasks"
+
+    task_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    guest_token = Column(String(64), nullable=False, index=True)
+    notify_target = Column(String(255), nullable=True)
+    current_msg = Column(String(255), nullable=False, default="작업 준비 중...")
+    status = Column(String(50), nullable=False, default="PENDING")
+    task_type = Column(String(50), nullable=False, default="VIDEO_AI")
+    expires_at = Column(DateTime(timezone=True), nullable=False, default=_default_expires_at)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

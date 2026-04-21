@@ -9,6 +9,7 @@ import os
 import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -35,7 +36,7 @@ from app.auth.security import (
     verify_password,
 )
 from app.auth.dependencies import get_current_user
-from app.crud import create_user, get_user_by_email
+from app.crud import claim_video_task, create_user, get_user_by_email
 from app.database import get_db
 from app.models import User
 
@@ -49,11 +50,17 @@ COOKIE_MAX_AGE = ACCESS_TOKEN_EXPIRE_MINUTES * 60
 class SignupBody(BaseModel):
     email: EmailStr
     password: str
+    task_id: str | None = None
 
 
 class LoginBody(BaseModel):
     email: EmailStr
     password: str
+    task_id: str | None = None
+
+
+class ClaimTaskBody(BaseModel):
+    task_id: str
 
 
 @router.post("/signup")
@@ -63,7 +70,22 @@ def signup(body: SignupBody, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
     hashed = hash_password(body.password)
     user = create_user(db, email=body.email, hashed_password=hashed, provider="local")
-    return {"message": "회원가입 완료", "user_id": str(user.id), "email": user.email}
+    if body.task_id:
+        try:
+            claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+        except ValueError:
+            pass
+    token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    response = JSONResponse(content={"message": "회원가입 완료", "user_id": str(user.id), "email": user.email})
+    response.set_cookie(
+        key=COOKIE_KEY,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
+    )
+    return response
 
 
 @router.post("/login")
@@ -74,6 +96,11 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    if body.task_id:
+        try:
+            claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+        except ValueError:
+            pass
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     response = JSONResponse(content={"message": "로그인 성공", "user_id": str(user.id), "email": user.email})
     response.set_cookie(
@@ -85,6 +112,31 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
         secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
     )
     return response
+
+
+@router.post("/claim-task")
+def claim_task_for_user(
+    body: ClaimTaskBody,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        task_id = UUID(body.task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task_id")
+
+    task = claim_video_task(db, task_id=task_id, user_id=current_user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.user_id != current_user.id:
+        raise HTTPException(status_code=409, detail="Task already owned by another user")
+
+    return {
+        "message": "소유권 이전 완료",
+        "task_id": str(task.task_id),
+        "project_id": str(task.project_id) if task.project_id else None,
+        "user_id": str(current_user.id),
+    }
 
 
 @router.get("/me")

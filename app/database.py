@@ -81,6 +81,56 @@ def ensure_user_id_column() -> None:
         pass
 
 
+def ensure_video_tasks_table() -> None:
+    """video_tasks 테이블/컬럼/인덱스를 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS video_tasks (
+                    task_id UUID PRIMARY KEY,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+                    guest_token VARCHAR(64) NOT NULL,
+                    notify_target VARCHAR(255),
+                    current_msg VARCHAR(255) NOT NULL DEFAULT '작업 준비 중...',
+                    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+                    task_type VARCHAR(50) NOT NULL DEFAULT 'VIDEO_AI',
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ADD COLUMN IF NOT EXISTS notify_target VARCHAR(255)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ADD COLUMN IF NOT EXISTS current_msg VARCHAR(255) NOT NULL DEFAULT '작업 준비 중...'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'PENDING'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(50) NOT NULL DEFAULT 'VIDEO_AI'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ"
+            ))
+            conn.execute(text(
+                "UPDATE video_tasks SET expires_at = now() + interval '48 hour' WHERE expires_at IS NULL"
+            ))
+            conn.execute(text(
+                "ALTER TABLE video_tasks ALTER COLUMN expires_at SET NOT NULL"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_video_tasks_guest_token ON video_tasks (guest_token)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_video_tasks_expires_at ON video_tasks (expires_at)"
+            ))
+    except Exception:
+        pass
+
+
 def get_db():
     """FastAPI 의존성용: 요청마다 세션 생성 후 종료 시 close."""
     db = SessionLocal()

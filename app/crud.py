@@ -1,13 +1,14 @@
 """
-프로젝트 및 MediaFiles 기본 CRUD.
+프로젝트/태스크 및 MediaFiles 기본 CRUD.
 JSONB ai_analysis 필드 읽기/쓰기 포함.
 """
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import MediaFile, Project, ProjectMode, User
+from app.models import MediaFile, Project, ProjectMode, User, VideoTask
 
 
 # ---------- Users ----------
@@ -237,3 +238,140 @@ def get_media_files_by_project(db: Session, project_id: UUID) -> list[MediaFile]
 def get_media_file(db: Session, media_file_id: int) -> Optional[MediaFile]:
     """MediaFile 단건 조회."""
     return db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+
+
+# ---------- VideoTasks ----------
+
+
+def create_video_task(
+    db: Session,
+    *,
+    guest_token: str,
+    user_id: UUID | None = None,
+    project_id: UUID | None = None,
+    notify_target: str | None = None,
+    status: str = "PENDING",
+    task_type: str = "VIDEO_AI",
+    current_msg: str = "작업 준비 중...",
+) -> VideoTask:
+    task = VideoTask(
+        guest_token=guest_token,
+        user_id=user_id,
+        project_id=project_id,
+        notify_target=notify_target,
+        status=status,
+        task_type=task_type,
+        current_msg=current_msg,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=48),
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def attach_video_task_project(db: Session, task_id: UUID, project_id: UUID) -> Optional[VideoTask]:
+    task = db.query(VideoTask).filter(VideoTask.task_id == task_id).first()
+    if not task:
+        return None
+    task.project_id = project_id
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def mark_video_task_status(
+    db: Session,
+    task_id: UUID,
+    *,
+    status: str | None = None,
+    current_msg: str | None = None,
+) -> Optional[VideoTask]:
+    task = db.query(VideoTask).filter(VideoTask.task_id == task_id).first()
+    if not task:
+        return None
+    if status is not None:
+        task.status = status
+    if current_msg is not None:
+        task.current_msg = current_msg
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_video_task(db: Session, task_id: UUID) -> Optional[VideoTask]:
+    return db.query(VideoTask).filter(VideoTask.task_id == task_id).first()
+
+
+def get_video_task_any(db: Session, task_id: UUID) -> Optional[VideoTask]:
+    """만료 여부와 무관하게 task를 조회한다."""
+    return get_video_task(db, task_id)
+
+
+def get_video_task_active(db: Session, task_id: UUID) -> Optional[VideoTask]:
+    """만료되지 않은 task만 조회한다."""
+    now = datetime.now(timezone.utc)
+    return (
+        db.query(VideoTask)
+        .filter(VideoTask.task_id == task_id)
+        .filter(VideoTask.expires_at > now)
+        .first()
+    )
+
+
+def get_latest_video_task_by_project(
+    db: Session,
+    project_id: UUID,
+    include_expired: bool = False,
+) -> Optional[VideoTask]:
+    q = db.query(VideoTask).filter(VideoTask.project_id == project_id)
+    if not include_expired:
+        q = q.filter(VideoTask.expires_at > datetime.now(timezone.utc))
+    return q.order_by(VideoTask.created_at.desc()).first()
+
+
+def update_video_task_notify(
+    db: Session,
+    task_id: UUID,
+    notify_target: str,
+) -> Optional[VideoTask]:
+    task = db.query(VideoTask).filter(VideoTask.task_id == task_id).first()
+    if not task:
+        return None
+    task.notify_target = notify_target
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def claim_video_task(
+    db: Session,
+    *,
+    task_id: UUID,
+    user_id: UUID,
+) -> Optional[VideoTask]:
+    """
+    Task를 현재 유저에게 귀속하고, 연결된 프로젝트 소유자도 함께 이전한다.
+    이미 다른 유저 소유인 task/project면 변경하지 않고 기존 레코드를 반환한다.
+    """
+    task = db.query(VideoTask).filter(VideoTask.task_id == task_id).first()
+    if not task:
+        return None
+
+    if task.user_id is not None and task.user_id != user_id:
+        return task
+
+    project = None
+    if task.project_id:
+        project = db.query(Project).filter(Project.id == task.project_id).first()
+        if project and project.user_id is not None and project.user_id != user_id:
+            return task
+
+    task.user_id = user_id
+    task.guest_token = ""
+    if project and (project.user_id is None or project.user_id == user_id):
+        project.user_id = user_id
+
+    db.commit()
+    db.refresh(task)
+    return task

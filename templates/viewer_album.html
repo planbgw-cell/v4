@@ -153,6 +153,36 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
     return fetch("/api/projects/" + encodeURIComponent(projectId) + "/claim", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
   }
 
+  function getActiveTaskId() {
+    try {
+      return (window.localStorage.getItem("flairy_active_task") || "").trim();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function claimTaskForUser() {
+    var taskId = getActiveTaskId();
+    if (!taskId) return Promise.resolve();
+    return fetch("/api/auth/claim-task", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(detailToMessage(d)); });
+      return r.json();
+    }).then(function () {
+      try { window.localStorage.removeItem("flairy_active_task"); } catch (e) {}
+    });
+  }
+
+  function claimAllAndGoMyPage() {
+    return claimProjectId()
+      .then(function () { return claimTaskForUser(); })
+      .then(function () { window.location.href = "/mypage"; });
+  }
+
   function onSaveClick() {
     fetch("/api/auth/me", { credentials: "include" })
       .then(function (r) {
@@ -161,13 +191,25 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
           return;
         }
         if (r.ok && projectId) {
-          return claimProjectId().then(function () { alert("저장되었습니다."); });
+          return claimAllAndGoMyPage();
         }
       });
   }
 
   var btnSave = document.getElementById("btnSave");
-  if (btnSave) btnSave.addEventListener("click", onSaveClick);
+  if (btnSave) {
+    btnSave.textContent = "평생 보관하기";
+    btnSave.title = "이 소중한 추억을 평생 보관하시겠어요? 1초 회원가입 후 저장";
+    var actionsWrap = btnSave.parentElement;
+    if (actionsWrap && !document.getElementById("wesClaimHint")) {
+      var hint = document.createElement("p");
+      hint.id = "wesClaimHint";
+      hint.className = "mt-2 text-xs text-gray-600";
+      hint.textContent = "이 소중한 추억을 평생 보관하시겠어요? 1초 회원가입 후 저장";
+      actionsWrap.insertBefore(hint, btnSave);
+    }
+    btnSave.addEventListener("click", onSaveClick);
+  }
   if (authModalLater) authModalLater.addEventListener("click", hideAuthModal);
   if (authModalBackdrop) authModalBackdrop.addEventListener("click", hideAuthModal);
 
@@ -179,10 +221,14 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authModalEmail.value, password: authModalPassword.value })
+        body: JSON.stringify({
+          email: authModalEmail.value,
+          password: authModalPassword.value,
+          task_id: getActiveTaskId() || null
+        })
       }).then(function (r) {
         if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
-        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+        return claimAllAndGoMyPage();
       }).catch(function () { showFormError("로그인 요청에 실패했습니다."); });
     });
   }
@@ -216,10 +262,14 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authModalSignupEmail.value, password: pwd })
+        body: JSON.stringify({
+          email: authModalSignupEmail.value,
+          password: pwd,
+          task_id: getActiveTaskId() || null
+        })
       }).then(function (r) {
         if (!r.ok) return r.json().then(function (d) { showFormError(detailToMessage(d)); });
-        return claimProjectId().then(function () { hideAuthModal(); alert("저장되었습니다."); window.location.reload(); });
+        return claimAllAndGoMyPage();
       }).catch(function () { showFormError("회원가입 요청에 실패했습니다."); });
     });
   }

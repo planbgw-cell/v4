@@ -14,7 +14,9 @@ from PIL import Image
 
 from app.crud import (
     get_media_files_by_project,
+    get_latest_video_task_by_project,
     get_project,
+    mark_video_task_status,
     update_media_file_ai_analysis,
     update_media_file_dimensions,
     update_media_file_is_selected,
@@ -35,6 +37,19 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SCORE_THRESHOLD = 0.25
 # pHash 유사도 이상이면 중복으로 보고 한쪽은 제외 (0~1)
 PHASH_SIMILARITY_THRESHOLD = 0.90
+
+
+def _update_task_message(project_id: UUID, *, status: str | None = None, msg: str | None = None) -> None:
+    db = SessionLocal()
+    try:
+        task = get_latest_video_task_by_project(db, project_id)
+        if not task:
+            return
+        mark_video_task_status(db, task.task_id, status=status, current_msg=msg)
+    except Exception:
+        logger.debug("task message update skipped for project=%s", project_id, exc_info=True)
+    finally:
+        db.close()
 
 
 def _persist_highlight_narrative_order_sync(project_id: UUID) -> None:
@@ -128,6 +143,14 @@ async def run_ai_analysis(project_id: UUID) -> None:
         update_project_ai_progress(db, project_id, total=total)
         update_project_ai_narrative_order(db, project_id, None)
         update_project_status(db, project_id, "ANALYZING")
+        task = get_latest_video_task_by_project(db, project_id)
+        if task:
+            mark_video_task_status(
+                db,
+                task.task_id,
+                status="ANALYZING",
+                current_msg="이미지들의 구도를 분석하고 있습니다...",
+            )
     finally:
         db.close()
 
@@ -163,7 +186,13 @@ async def run_ai_analysis(project_id: UUID) -> None:
                 update_project_ai_progress(db, project_id, processed_increment=1)
             finally:
                 db.close()
-            current = idx + 1
+            if current := (idx + 1):
+                if current in (1, max(1, total // 2), total):
+                    _update_task_message(
+                        project_id,
+                        status="ANALYZING",
+                        msg=f"AI가 사진을 분석 중입니다... ({current}/{total})",
+                    )
             logger.info("Project %s: Analyzed %d/%d media", project_id, current, total)
 
     # 렌더링 전 유니크 리스트 확정: 중복 90% 이상은 is_selected=False로 제외.
@@ -238,6 +267,11 @@ async def run_ai_analysis(project_id: UUID) -> None:
         phash_pairs_dropped,
         PHASH_SIMILARITY_THRESHOLD * 100,
     )
+    _update_task_message(
+        project_id,
+        status="COMPOSING",
+        msg="베스트 컷 3장을 고르는 중입니다...",
+    )
 
     try:
         await asyncio.to_thread(_persist_highlight_narrative_order_sync, project_id)
@@ -249,6 +283,14 @@ async def run_ai_analysis(project_id: UUID) -> None:
         media_files = get_media_files_by_project(db, project_id)
         final_selected = len([mf for mf in media_files if mf.file_type == "image" and getattr(mf, "is_selected", True)])
         update_project_status(db, project_id, "COMPOSING")
+        task = get_latest_video_task_by_project(db, project_id)
+        if task:
+            mark_video_task_status(
+                db,
+                task.task_id,
+                status="COMPOSING",
+                current_msg="선택된 장면들을 음악에 맞춰 배치하고 있습니다...",
+            )
     finally:
         db.close()
     logger.debug("Curate: 최종 선택 %d건 (이미지)", final_selected)

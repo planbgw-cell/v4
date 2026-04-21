@@ -8,10 +8,11 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.crud import create_project
+from app.auth.dependencies import get_current_user_optional
+from app.crud import create_project, create_video_task
 from app.database import SessionLocal
 from app.models import MediaFile, ProjectMode
 from app.services.video_service import run_ai_analysis
@@ -59,6 +60,7 @@ async def api_upload(
     mode: str = Form(...),
     project_type: str = Form("video"),
     files: list[UploadFile] = File(default=[]),
+    current_user=Depends(get_current_user_optional),
 ):
     """프로젝트 생성 후 파일을 storage/raw/{project_id}/ 에 저장하고 MediaFiles에 기록. 순서 유지."""
     if len(files) < MIN_UPLOAD_FILES:
@@ -76,11 +78,29 @@ async def api_upload(
         project_type = "video"
 
     db: Session = SessionLocal()
+    guest_token = uuid.uuid4().hex
+    task_type = (
+        "ALBUM_AI"
+        if project_type == "album"
+        else ("VIDEO_AI" if project_mode == ProjectMode.AI else "VIDEO_RULE")
+    )
+    task = None
+    task_id_str = None
     try:
         project = create_project(
             db, title=title, mode=project_mode, status="PENDING", project_type=project_type
         )
         project_id = project.id
+        task = create_video_task(
+            db,
+            guest_token=guest_token,
+            user_id=getattr(current_user, "id", None),
+            project_id=project_id,
+            task_type=task_type,
+            status="PENDING",
+            current_msg="작업 준비 중...",
+        )
+        task_id_str = str(task.task_id)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"프로젝트 생성 실패: {e!s}")
@@ -165,4 +185,9 @@ async def api_upload(
     if project_mode == ProjectMode.AI:
         background_tasks.add_task(run_ai_analysis, project_id)
 
-    return {"project_id": str(project_id), "project_type": project_type}
+    return {
+        "project_id": str(project_id),
+        "project_type": project_type,
+        "task_id": task_id_str,
+        "guest_token": guest_token,
+    }

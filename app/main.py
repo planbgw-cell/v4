@@ -43,6 +43,7 @@ from app.database import (
     ensure_logs_column,
     ensure_project_type_column,
     ensure_user_id_column,
+    ensure_video_tasks_table,
 )
 from app.routes import auth as auth_router
 from app.routes import project as project_router
@@ -50,6 +51,7 @@ from app.routes import upload as upload_router
 from app.routes import status as status_router
 from app.routes import generate as generate_router
 from app.routes import media as media_router
+from app.routes import task as task_router
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -70,6 +72,7 @@ def on_startup():
     ensure_project_type_column()
     ensure_ai_narrative_order_column()
     ensure_user_id_column()
+    ensure_video_tasks_table()
     for route in app.routes:
         print(f"[Route Check] Path: {route.path}")
         logger.info("[Route Check] Path: %s", route.path)
@@ -81,6 +84,7 @@ app.include_router(upload_router.router)
 app.include_router(status_router.router)
 app.include_router(generate_router.router)
 app.include_router(media_router.router)
+app.include_router(task_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
