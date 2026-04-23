@@ -12,32 +12,9 @@ def _build_magic_link(task_id: UUID | str) -> str:
 
 
 def send_task_completion_alert(task_id: UUID | str, notify_target: str | None) -> None:
-    """
-    WES 4단계 알림 스텁.
-    실제 알림 API 연동 전에는 서버 로그에 매직 링크를 남긴다.
-    """
-    if not notify_target:
-        return
-    magic_link = _build_magic_link(task_id)
-    logger.info("[알림 전송] 앨범 완성! 매직링크: %s (target=%s)", magic_link, notify_target)
-import logging
-from uuid import UUID
-
-logger = logging.getLogger(__name__)
-
-MAGIC_LINK_ORIGIN = "http://121.133.47.184:8000"
-
-
-def send_task_completion_alert(task_id: UUID | str, notify_target: str | None) -> None:
-    """
-    알림톡 연동 전 스텁.
-    notify_target이 있을 때만 완료 알림 로그를 남긴다.
-    """
+    """알림톡 연동 전 스텁. notify_target이 있을 때만 완료 알림 로그를 남긴다."""
     target = str(notify_target or "").strip()
     if not target:
         return
-    task_id_str = str(task_id).strip()
-    if not task_id_str:
-        return
-    magic_link = f"{MAGIC_LINK_ORIGIN}/?task_id={task_id_str}"
+    magic_link = _build_magic_link(task_id)
     logger.info("[알림 전송] 앨범 완성! 매직링크: %s (target=%s)", magic_link, target)

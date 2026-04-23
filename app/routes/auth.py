@@ -70,13 +70,30 @@ def signup(body: SignupBody, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
     hashed = hash_password(body.password)
     user = create_user(db, email=body.email, hashed_password=hashed, provider="local")
+    claim_result = None
     if body.task_id:
         try:
-            claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+            task = claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+            if task is None:
+                claim_result = {"ok": False, "message": "Task not found"}
+            elif task.user_id != user.id:
+                claim_result = {"ok": False, "message": "Task already owned by another user"}
+            else:
+                claim_result = {
+                    "ok": True,
+                    "message": "소유권 이전 완료",
+                    "task_id": str(task.task_id),
+                    "project_id": str(task.project_id) if task.project_id else None,
+                }
         except ValueError:
-            pass
+            claim_result = {"ok": False, "message": "Invalid task_id"}
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    response = JSONResponse(content={"message": "회원가입 완료", "user_id": str(user.id), "email": user.email})
+    response = JSONResponse(content={
+        "message": "회원가입 완료",
+        "user_id": str(user.id),
+        "email": user.email,
+        "claim_result": claim_result,
+    })
     response.set_cookie(
         key=COOKIE_KEY,
         value=token,
@@ -96,13 +113,30 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    claim_result = None
     if body.task_id:
         try:
-            claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+            task = claim_video_task(db, task_id=UUID(body.task_id), user_id=user.id)
+            if task is None:
+                claim_result = {"ok": False, "message": "Task not found"}
+            elif task.user_id != user.id:
+                claim_result = {"ok": False, "message": "Task already owned by another user"}
+            else:
+                claim_result = {
+                    "ok": True,
+                    "message": "소유권 이전 완료",
+                    "task_id": str(task.task_id),
+                    "project_id": str(task.project_id) if task.project_id else None,
+                }
         except ValueError:
-            pass
+            claim_result = {"ok": False, "message": "Invalid task_id"}
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    response = JSONResponse(content={"message": "로그인 성공", "user_id": str(user.id), "email": user.email})
+    response = JSONResponse(content={
+        "message": "로그인 성공",
+        "user_id": str(user.id),
+        "email": user.email,
+        "claim_result": claim_result,
+    })
     response.set_cookie(
         key=COOKIE_KEY,
         value=token,

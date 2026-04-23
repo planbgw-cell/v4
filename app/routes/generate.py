@@ -153,7 +153,10 @@ def _run_generate_task(project_id_str: str) -> None:
                     status="COMPLETED",
                     current_msg="생성이 완료되었습니다.",
                 )
-                send_task_completion_alert(task.task_id, task.notify_target)
+                try:
+                    send_task_completion_alert(task.task_id, task.notify_target)
+                except Exception:
+                    logger.exception("완료 알림 로그 처리 실패: task_id=%s", task.task_id)
         finally:
             db.close()
         logger.info("영상 생성 완료: %s", final_path)
@@ -333,7 +336,10 @@ def _run_album_task(project_id_str: str, project_id: UUID) -> None:
                     status="COMPLETED",
                     current_msg="생성이 완료되었습니다.",
                 )
-                send_task_completion_alert(task.task_id, task.notify_target)
+                try:
+                    send_task_completion_alert(task.task_id, task.notify_target)
+                except Exception:
+                    logger.exception("완료 알림 로그 처리 실패: task_id=%s", task.task_id)
         finally:
             db.close()
         logger.info("앨범 설계도 생성 완료: project_id=%s", project_id)
