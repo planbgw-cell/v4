@@ -56,6 +56,34 @@
       margin-bottom: 10px;
       flex-wrap: wrap;
     }
+    .admin-role {
+      color: #cbd5e1;
+    }
+    .logout-btn {
+      border: none;
+      background: transparent;
+      color: #fca5a5;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 0;
+      margin-left: 6px;
+      transition: color .2s ease, transform .2s ease;
+    }
+    .logout-btn:hover {
+      color: #fecaca;
+      transform: translateX(1px);
+      animation: logoutShake .18s ease-in-out 1;
+    }
+    @keyframes logoutShake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-1px); }
+      50% { transform: translateX(1px); }
+      100% { transform: translateX(1px); }
+    }
     .session-warning {
       display: none;
       width: 100%;
@@ -100,6 +128,11 @@
     <main class="admin-main">
       <div id="sessionWarning" class="session-warning">보안을 위해 세션이 곧 만료됩니다.</div>
       <div class="admin-meta">
+        <span class="admin-role">role: {{ admin_role or "super_admin" }}</span>
+        <button id="adminLogoutBtn" class="logout-btn" type="button" title="로그아웃">
+          <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+          <span>로그아웃</span>
+        </button>
         <span>서버 시간: <span id="serverNowDisplay">{{ server_now or "-" }}</span></span>
         <span>세션 만료: {{ admin_session_expires_at or "-" }}</span>
         <span id="sessionRemaining">남은 시간: —</span>
@@ -116,6 +149,7 @@
 
     var warningEl = document.getElementById("sessionWarning");
     var remainEl = document.getElementById("sessionRemaining");
+    var logoutBtn = document.getElementById("adminLogoutBtn");
     var warnAt = expireMs - (5 * 60 * 1000);
     var loggedOut = false;
 
@@ -133,6 +167,12 @@
         .finally(function () {
           window.location.href = "/admin/login";
         });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function () {
+        logoutNow();
+      });
     }
 
     function tick() {
