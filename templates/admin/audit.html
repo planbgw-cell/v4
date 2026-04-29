@@ -1,0 +1,165 @@
+{% extends "admin/base.html" %}
+{% block title %}Audit Logs - Flairy{% endblock %}
+{% block head %}
+<style>
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .field{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0f172a;color:var(--text)}
+  .btn{border:1px solid var(--line);background:#1e293b;color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
+  .btn.primary{background:var(--primary);border-color:var(--primary)}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid #1e293b;text-align:left;font-size:13px;vertical-align:top}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+  .badge-ban{background:#7f1d1d;color:#fecaca}
+  .badge-retry{background:#1e3a8a;color:#bfdbfe}
+  .badge-delete{background:#7c2d12;color:#fdba74}
+  .badge-default{background:#334155;color:#e2e8f0}
+  .pager{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px}
+  .modal{position:fixed;inset:0;background:rgba(2,6,23,.7);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.show{display:flex}
+  .modal-card{width:min(900px,95vw);max-height:85vh;overflow:auto;background:#0f172a;border:1px solid #334155;border-radius:12px;padding:14px}
+  pre{margin:0;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:12px;white-space:pre-wrap;word-break:break-word;color:#cbd5e1}
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-top">
+  <h1 style="margin:0;font-size:24px;">감사 로그</h1>
+  <span style="color:#94a3b8;">role: {{ admin_role }}</span>
+</div>
+<section class="card">
+  <div class="toolbar">
+    <input id="adminName" class="field" placeholder="관리자명" />
+    <input id="actionType" class="field" placeholder="액션 타입 (예: BAN_USER)" />
+    <input id="startDate" class="field" type="date" />
+    <input id="endDate" class="field" type="date" />
+    <button id="searchBtn" class="btn primary" type="button">조회</button>
+    <button id="resetBtn" class="btn" type="button">초기화</button>
+  </div>
+  <div style="overflow:auto;">
+    <table>
+      <thead>
+        <tr><th>일시</th><th>관리자</th><th>액션</th><th>대상</th><th>IP/기기</th><th>상세</th></tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="6">로딩 중...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <button id="prevBtn" class="btn" type="button">이전</button>
+    <span id="pageInfo" style="color:var(--muted);">-</span>
+    <button id="nextBtn" class="btn" type="button">다음</button>
+  </div>
+</section>
+
+<div id="jsonModal" class="modal">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>상세 JSON</strong>
+      <button id="modalClose" class="btn" type="button">닫기</button>
+    </div>
+    <pre id="jsonContent">{}</pre>
+  </div>
+</div>
+
+<script>
+(function () {
+  var state = { page: 1, pageSize: 20, pages: 1 };
+  var lastItems = [];
+  var rowsEl = document.getElementById("rows");
+  var pageInfoEl = document.getElementById("pageInfo");
+  var modalEl = document.getElementById("jsonModal");
+  var jsonEl = document.getElementById("jsonContent");
+
+  function badgeClass(action) {
+    var a = (action || "").toUpperCase();
+    if (a.indexOf("BAN") >= 0) return "badge badge-ban";
+    if (a.indexOf("RETRY") >= 0) return "badge badge-retry";
+    if (a.indexOf("DELETE") >= 0) return "badge badge-delete";
+    return "badge badge-default";
+  }
+
+  function buildUrl() {
+    var p = new URLSearchParams();
+    p.set("page", String(state.page));
+    p.set("page_size", String(state.pageSize));
+    var adminName = document.getElementById("adminName").value.trim();
+    var actionType = document.getElementById("actionType").value.trim();
+    var startDate = document.getElementById("startDate").value;
+    var endDate = document.getElementById("endDate").value;
+    if (adminName) p.set("admin_name", adminName);
+    if (actionType) p.set("action_type", actionType);
+    if (startDate) p.set("start_date", startDate);
+    if (endDate) p.set("end_date", endDate);
+    return "/api/admin/audit-logs?" + p.toString();
+  }
+
+  function bindDetailButtons() {
+    rowsEl.querySelectorAll("button[data-row-idx]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var idx = parseInt(btn.getAttribute("data-row-idx"), 10);
+        var it = lastItems[idx];
+        var det = it && it.details != null ? it.details : {};
+        jsonEl.textContent = JSON.stringify(det, null, 2);
+        modalEl.classList.add("show");
+      });
+    });
+  }
+
+  function loadLogs() {
+    return fetch(buildUrl(), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("load"); return r.json(); })
+      .then(function (d) {
+        state.pages = d.pages || 1;
+        pageInfoEl.textContent = state.page + " / " + state.pages;
+        var items = d.items || [];
+        lastItems = items;
+        if (!items.length) {
+          rowsEl.innerHTML = '<tr><td colspan="6">조회 결과가 없습니다.</td></tr>';
+          return;
+        }
+        rowsEl.innerHTML = items.map(function (it, idx) {
+          var action = it.action_type || "";
+          return (
+            "<tr>" +
+              "<td>" + (it.created_at ? new Date(it.created_at).toLocaleString("ko-KR") : "-") + "</td>" +
+              "<td>" + (it.admin_username || "-") + "</td>" +
+              "<td><span class='" + badgeClass(action) + "'>" + action + "</span></td>" +
+              "<td>" + (it.target_id || "-") + "</td>" +
+              "<td><div>" + (it.ip_address || "-") + "</div><div style='color:#94a3b8;max-width:260px;word-break:break-all;'>" + (it.user_agent || "-") + "</div></td>" +
+              "<td><button class='btn' type='button' data-row-idx='" + idx + "'>보기</button></td>" +
+            "</tr>"
+          );
+        }).join("");
+        bindDetailButtons();
+      })
+      .catch(function () {
+        rowsEl.innerHTML = '<tr><td colspan="6">감사 로그를 불러오지 못했습니다.</td></tr>';
+      });
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", function () { state.page = 1; loadLogs(); });
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    document.getElementById("adminName").value = "";
+    document.getElementById("actionType").value = "";
+    document.getElementById("startDate").value = "";
+    document.getElementById("endDate").value = "";
+    state.page = 1;
+    loadLogs();
+  });
+  document.getElementById("prevBtn").addEventListener("click", function () {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    loadLogs();
+  });
+  document.getElementById("nextBtn").addEventListener("click", function () {
+    if (state.page >= state.pages) return;
+    state.page += 1;
+    loadLogs();
+  });
+  document.getElementById("modalClose").addEventListener("click", function () { modalEl.classList.remove("show"); });
+  modalEl.addEventListener("click", function (e) {
+    if (e.target === modalEl) modalEl.classList.remove("show");
+  });
+
+  loadLogs();
+})();
+</script>
+{% endblock %}

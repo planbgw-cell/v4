@@ -47,6 +47,8 @@ async def get_current_user(
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if getattr(user, "is_active", True) is False:
+        raise HTTPException(status_code=403, detail="정지된 계정입니다. 관리자에게 문의해 주세요.")
     return user
 
 
@@ -70,4 +72,8 @@ async def get_current_user_optional(
     except ValueError:
         return None
     user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    if getattr(user, "is_active", True) is False:
+        return None
     return user

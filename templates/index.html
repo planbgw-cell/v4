@@ -6,6 +6,16 @@
   {% include "partials/header.html" %}
   <div class="mb-8"></div>
 
+  <section class="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-800">공지사항</h2>
+      <span class="text-xs text-gray-500">최신 3건</span>
+    </div>
+    <ul id="noticeList" class="divide-y divide-gray-100">
+      <li class="py-2 text-sm text-gray-500">로딩 중...</li>
+    </ul>
+  </section>
+
   <style>
     /* UX: 결과물 실행 버튼(쌍둥이 버튼) 클릭 피드백 */
     .btn-active {
@@ -135,6 +145,34 @@
 <script src="/static/js/wes-client.js?v=1.0.0"></script>
 <script>
 (function () {
+  var noticeList = document.getElementById("noticeList");
+  if (noticeList) {
+    fetch("/api/notices", { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .then(function (d) {
+        var items = (d && d.items) || [];
+        if (!items.length) {
+          noticeList.innerHTML = '<li class="py-2 text-sm text-gray-500">등록된 공지사항이 없습니다.</li>';
+          return;
+        }
+        noticeList.innerHTML = items.map(function (n) {
+          var badge = n.is_pinned
+            ? '<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 mr-1">고정</span>'
+            : '';
+          var dateText = n.created_at ? new Date(n.created_at).toLocaleDateString("ko-KR") : '-';
+          return (
+            '<li class="py-2 flex items-center justify-between gap-3">' +
+              '<span class="text-sm text-gray-700 truncate">' + badge + n.title + '</span>' +
+              '<span class="text-xs text-gray-400 whitespace-nowrap">' + dateText + '</span>' +
+            '</li>'
+          );
+        }).join('');
+      })
+      .catch(function () {
+        noticeList.innerHTML = '<li class="py-2 text-sm text-red-500">공지사항을 불러오지 못했습니다.</li>';
+      });
+  }
+
   var headerAuthBtn = document.getElementById("headerAuthBtn");
   var authModal = document.getElementById("authModal");
   var authModalBackdrop = document.getElementById("authModalBackdrop");

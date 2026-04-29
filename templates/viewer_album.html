@@ -154,9 +154,6 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
   }
 
   function getActiveTaskId() {
-    if (window.FlairyWES && typeof window.FlairyWES.getActiveTaskId === "function") {
-      return window.FlairyWES.getActiveTaskId() || "";
-    }
     try {
       return (window.localStorage.getItem("flairy_active_task") || "").trim();
     } catch (e) {

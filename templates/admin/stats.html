@@ -1,0 +1,254 @@
+{% extends "admin/base.html" %}
+{% block title %}Admin Stats - Flairy{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .stats-toolbar { display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .filter-btn {
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 12px;
+    background:#1e293b;
+    color:var(--text);
+    cursor:pointer;
+    font-size:13px;
+  }
+  .filter-btn.active { background:var(--primary); border-color:var(--primary); }
+  .cards { display:grid; grid-template-columns:repeat(3,minmax(180px,1fr)); gap:12px; margin-bottom:14px; }
+  .card-item { background:#0f172a; border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .card-label { color:var(--muted); font-size:12px; margin-bottom:6px; }
+  .card-value { font-size:24px; font-weight:700; }
+  .charts { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+  .chart-box { background:#0f172a; border:1px solid var(--line); border-radius:12px; padding:12px; min-height:320px; }
+  .chart-title { margin:0 0 8px 0; font-size:14px; color:var(--muted); }
+  .chart-canvas-wrap { position:relative; height:260px; }
+  .chart-box.bar { grid-column:1 / span 2; }
+  .health-grid { display:grid; grid-template-columns:repeat(3,minmax(180px,1fr)); gap:10px; margin-bottom:12px; }
+  .health-item { background:#0f172a; border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .health-label { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .health-bar { width:100%; height:8px; background:#1e293b; border-radius:999px; overflow:hidden; }
+  .health-fill { height:100%; width:0%; background:#22c55e; transition:width .2s ease; }
+  .health-fill.danger-blink { animation: dangerPulse 1s infinite; background:#ef4444 !important; }
+  .health-value { margin-top:6px; font-size:12px; color:var(--muted); }
+  @keyframes dangerPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+  }
+  @media (max-width: 960px) {
+    .cards { grid-template-columns:repeat(2,minmax(160px,1fr)); }
+    .charts { grid-template-columns:1fr; }
+    .chart-box.bar { grid-column:auto; }
+  }
+  @media (max-width: 560px) {
+    .cards { grid-template-columns:1fr; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-top">
+  <h1 style="margin:0;font-size:24px;">통계 대시보드</h1>
+  <span style="color:#94a3b8;">role: {{ admin_role }}</span>
+</div>
+
+<section class="card">
+  <div class="stats-toolbar">
+    <button type="button" class="filter-btn" data-range="7d">최근 7일</button>
+    <button type="button" class="filter-btn active" data-range="30d">최근 30일</button>
+    <button type="button" class="filter-btn" data-range="all">전체 기간</button>
+    <span id="updatedAt" style="margin-left:auto;color:var(--muted);font-size:12px;">-</span>
+  </div>
+
+  <div class="health-grid">
+    <div class="health-item">
+      <div class="health-label">CPU 사용률</div>
+      <div class="health-bar"><div id="cpuFill" class="health-fill"></div></div>
+      <div id="cpuValue" class="health-value">0%</div>
+    </div>
+    <div class="health-item">
+      <div class="health-label">메모리 사용률</div>
+      <div class="health-bar"><div id="memFill" class="health-fill"></div></div>
+      <div id="memValue" class="health-value">0%</div>
+    </div>
+    <div class="health-item">
+      <div class="health-label">디스크 사용률</div>
+      <div class="health-bar"><div id="diskFill" class="health-fill"></div></div>
+      <div id="diskValue" class="health-value">0%</div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card-item"><div class="card-label">전체 가입자</div><div id="totalUsers" class="card-value">0</div></div>
+    <div class="card-item"><div class="card-label">오늘 가입자</div><div id="todayUsers" class="card-value">0</div></div>
+    <div class="card-item"><div class="card-label">오늘 생성 태스크</div><div id="todayTasks" class="card-value">0</div></div>
+    <div class="card-item"><div class="card-label">성공률</div><div id="successRate" class="card-value">0%</div></div>
+    <div class="card-item"><div class="card-label">전환율</div><div id="conversionRate" class="card-value">0%</div></div>
+    <div class="card-item"><div class="card-label">인당 생성량</div><div id="tasksPerCreator" class="card-value">0</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-box">
+      <h3 class="chart-title">일별 활성 유저(DAU) 추이</h3>
+      <div class="chart-canvas-wrap"><canvas id="dailyLineChart"></canvas></div>
+    </div>
+    <div class="chart-box">
+      <h3 class="chart-title">AI vs Rule 점유율</h3>
+      <div class="chart-canvas-wrap"><canvas id="modeDoughnutChart"></canvas></div>
+    </div>
+    <div class="chart-box bar">
+      <h3 class="chart-title">요일별 생성 요청 건수</h3>
+      <div class="chart-canvas-wrap"><canvas id="weekdayBarChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var currentRange = "30d";
+  var charts = { line: null, doughnut: null, bar: null };
+  var healthInFlight = false;
+  var healthTimer = null;
+
+  function setActiveFilter() {
+    document.querySelectorAll(".filter-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.range === currentRange);
+    });
+  }
+  function fmt(n) { return Number(n || 0).toLocaleString(); }
+  function setCard(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; }
+  function setGauge(fillId, valueId, percent, text) {
+    var fill = document.getElementById(fillId);
+    var valueEl = document.getElementById(valueId);
+    if (fill) {
+      var p = Math.max(0, Math.min(100, Number(percent || 0)));
+      fill.style.width = p + "%";
+      fill.style.background = p >= 90 ? "#ef4444" : (p >= 70 ? "#f59e0b" : "#22c55e");
+      if (fillId === "diskFill" && p >= 90) fill.classList.add("danger-blink");
+      else fill.classList.remove("danger-blink");
+    }
+    if (valueEl) valueEl.textContent = text;
+  }
+  function ensureLineChart() {
+    if (charts.line) return charts.line;
+    charts.line = new Chart(document.getElementById("dailyLineChart"), {
+      type: "line",
+      data: { labels: [], datasets: [
+        { label: "DAU", data: [], borderColor: "#60a5fa", backgroundColor: "rgba(96,165,250,.2)", tension: .25, fill: true },
+        { label: "신규 가입자", data: [], borderColor: "#34d399", backgroundColor: "rgba(52,211,153,.15)", tension: .25, fill: true },
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+    return charts.line;
+  }
+  function ensureDoughnutChart() {
+    if (charts.doughnut) return charts.doughnut;
+    charts.doughnut = new Chart(document.getElementById("modeDoughnutChart"), {
+      type: "doughnut",
+      data: { labels: ["AI", "Rule"], datasets: [{ data: [0, 0], backgroundColor: ["#8b5cf6", "#06b6d4"] }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+    return charts.doughnut;
+  }
+  function ensureBarChart() {
+    if (charts.bar) return charts.bar;
+    charts.bar = new Chart(document.getElementById("weekdayBarChart"), {
+      type: "bar",
+      data: { labels: ["일","월","화","수","목","금","토"], datasets: [{ label: "요청 건수", data: [0,0,0,0,0,0,0], backgroundColor: "#f59e0b" }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+    return charts.bar;
+  }
+
+  function loadSummary() {
+    return fetch("/api/admin/stats/summary?range=" + currentRange, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("summary"); return r.json(); })
+      .then(function (d) {
+        setCard("totalUsers", fmt(d.total_users));
+        setCard("todayUsers", fmt(d.today_users));
+        setCard("todayTasks", fmt(d.today_tasks));
+        setCard("successRate", (d.success_rate || 0) + "%");
+        setCard("conversionRate", (d.conversion_rate || 0) + "%");
+        setCard("tasksPerCreator", d.tasks_per_creator || 0);
+        document.getElementById("updatedAt").textContent = "updated: " + (d.cached_at || "-");
+      });
+  }
+
+  function loadDaily() {
+    return fetch("/api/admin/stats/daily-growth?range=" + currentRange, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("daily"); return r.json(); })
+      .then(function (d) {
+        var items = d.items || [];
+        var labels = items.map(function (x) { return x.date; });
+        var dau = items.map(function (x) { return x.dau || 0; });
+        var users = items.map(function (x) { return x.new_users || 0; });
+        var c = ensureLineChart();
+        c.data.labels = labels;
+        c.data.datasets[0].data = dau;
+        c.data.datasets[1].data = users;
+        c.update();
+      });
+  }
+
+  function loadAnalysis() {
+    return fetch("/api/admin/stats/task-analysis?range=" + currentRange, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("analysis"); return r.json(); })
+      .then(function (d) {
+        var m = d.mode_ratio || {};
+        var wd = d.weekday_distribution || [];
+        var donut = ensureDoughnutChart();
+        donut.data.datasets[0].data = [m.AI || 0, m.Rule || 0];
+        donut.update();
+        var byDow = [0,0,0,0,0,0,0];
+        wd.forEach(function (row) {
+          if (row && row.dow >= 0 && row.dow <= 6) byDow[row.dow] = row.count || 0;
+        });
+        var bar = ensureBarChart();
+        bar.data.datasets[0].data = byDow;
+        bar.update();
+      });
+  }
+
+  function loadHealth() {
+    if (healthInFlight) return;
+    healthInFlight = true;
+    fetch("/api/admin/system/health", { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("health"); return r.json(); })
+      .then(function (d) {
+        setGauge("cpuFill", "cpuValue", d.cpu_percent, (d.cpu_percent || 0) + "%");
+        setGauge("memFill", "memValue", d.memory_percent, (d.memory_percent || 0) + "%");
+        setGauge("diskFill", "diskValue", d.disk_percent, (d.disk_percent || 0) + "%");
+      })
+      .catch(function () {
+        setGauge("cpuFill", "cpuValue", 0, "조회 실패");
+        setGauge("memFill", "memValue", 0, "조회 실패");
+        setGauge("diskFill", "diskValue", 0, "조회 실패");
+      })
+      .finally(function () {
+        healthInFlight = false;
+      });
+  }
+
+  function refreshAll() {
+    setActiveFilter();
+    Promise.all([loadSummary(), loadDaily(), loadAnalysis()]).catch(function () {
+      alert("통계 데이터를 불러오지 못했습니다.");
+    });
+    loadHealth();
+  }
+
+  document.querySelectorAll(".filter-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      currentRange = btn.dataset.range || "30d";
+      refreshAll();
+    });
+  });
+
+  refreshAll();
+  healthTimer = setInterval(function () {
+    if (document.visibilityState !== "visible") return;
+    loadHealth();
+  }, 5000);
+})();
+</script>
+{% endblock %}
+

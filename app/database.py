@@ -131,6 +131,119 @@ def ensure_video_tasks_table() -> None:
         pass
 
 
+def ensure_admin_users_table() -> None:
+    """admin_users 테이블/인덱스를 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS admin_users (
+                    id UUID PRIMARY KEY,
+                    username VARCHAR(64) NOT NULL UNIQUE,
+                    hashed_password VARCHAR(255) NOT NULL,
+                    role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
+                    last_login TIMESTAMPTZ NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_admin_users_username ON admin_users (username)"
+            ))
+    except Exception:
+        pass
+
+
+def ensure_board_tables() -> None:
+    """공지/문의 테이블 및 인덱스를 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS board_notices (
+                    id UUID PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT NOT NULL,
+                    is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                    view_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS board_inquiries (
+                    id UUID PRIMARY KEY,
+                    user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                    guest_token VARCHAR(64) NULL,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT NOT NULL,
+                    is_secret BOOLEAN NOT NULL DEFAULT FALSE,
+                    answer_content TEXT NULL,
+                    answered_at TIMESTAMPTZ NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_board_notices_pinned_created ON board_notices (is_pinned DESC, created_at DESC)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_board_inquiries_status_created ON board_inquiries (status, created_at DESC)"
+            ))
+    except Exception:
+        pass
+
+
+def ensure_users_table_addons() -> None:
+    """users 테이블의 관리자 운영용 보조 컬럼을 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NULL"
+            ))
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS storage_usage_bytes BIGINT NOT NULL DEFAULT 0"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_users_is_active_created ON users (is_active, created_at DESC)"
+            ))
+    except Exception:
+        pass
+
+
+def ensure_admin_action_logs_table() -> None:
+    """관리자 감사 로그 테이블/인덱스를 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS admin_action_logs (
+                    id UUID PRIMARY KEY,
+                    admin_id UUID NULL REFERENCES admin_users(id) ON DELETE SET NULL,
+                    action_type VARCHAR(50) NOT NULL,
+                    target_id VARCHAR(100) NOT NULL,
+                    details JSONB NULL,
+                    ip_address VARCHAR(64) NULL,
+                    user_agent VARCHAR(512) NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "ALTER TABLE admin_action_logs ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE admin_action_logs ADD COLUMN IF NOT EXISTS user_agent VARCHAR(512)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_admin_action_logs_created_at ON admin_action_logs (created_at DESC)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_admin_action_logs_admin_id ON admin_action_logs (admin_id, created_at DESC)"
+            ))
+    except Exception:
+        pass
+
+
 def get_db():
     """FastAPI 의존성용: 요청마다 세션 생성 후 종료 시 close."""
     db = SessionLocal()

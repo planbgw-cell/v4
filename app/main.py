@@ -38,11 +38,15 @@ from app.auth.dependencies import get_current_user_optional, COOKIE_KEY
 from app.crud import get_project, get_projects_by_user_id
 from app.database import (
     SessionLocal,
+    ensure_admin_action_logs_table,
     ensure_ai_narrative_order_column,
     ensure_ai_progress_columns,
+    ensure_admin_users_table,
+    ensure_board_tables,
     ensure_logs_column,
     ensure_project_type_column,
     ensure_user_id_column,
+    ensure_users_table_addons,
     ensure_video_tasks_table,
 )
 from app.routes import auth as auth_router
@@ -52,6 +56,7 @@ from app.routes import status as status_router
 from app.routes import generate as generate_router
 from app.routes import media as media_router
 from app.routes import task as task_router
+from app.routes import admin as admin_router
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -73,11 +78,16 @@ def on_startup():
     ensure_ai_narrative_order_column()
     ensure_user_id_column()
     ensure_video_tasks_table()
+    ensure_admin_users_table()
+    ensure_board_tables()
+    ensure_users_table_addons()
+    ensure_admin_action_logs_table()
     for route in app.routes:
         print(f"[Route Check] Path: {route.path}")
         logger.info("[Route Check] Path: %s", route.path)
 
 
+app.include_router(admin_router.router)
 app.include_router(auth_router.router)
 app.include_router(project_router.router)
 app.include_router(upload_router.router)

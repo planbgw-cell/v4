@@ -1,0 +1,264 @@
+{% extends "admin/base.html" %}
+{% block title %}Board Admin - Flairy{% endblock %}
+{% block head %}
+<style>
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tab-btn{border:1px solid #334155;background:#0f172a;color:#cbd5e1;padding:8px 12px;border-radius:8px;cursor:pointer}
+  .tab-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
+  .hidden{display:none}
+  .board-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field{width:100%;padding:10px 12px;border:1px solid #334155;background:#0b1220;color:#e2e8f0;border-radius:8px}
+  .textarea{min-height:120px;resize:vertical}
+  .btn-row{display:flex;gap:8px;margin-top:8px}
+  .btn-sm{padding:8px 12px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;cursor:pointer}
+  .btn-primary{background:#2563eb;border-color:#2563eb;color:#fff}
+  .list-table{width:100%;border-collapse:collapse;margin-top:12px}
+  .list-table th,.list-table td{padding:10px;border-bottom:1px solid #1e293b;text-align:left;font-size:14px}
+  .muted{color:#94a3b8}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+  .badge-pending{background:#7c2d12;color:#fdba74}
+  .badge-answered{background:#14532d;color:#86efac}
+  .clickable{cursor:pointer}
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-top">
+  <h1 style="margin:0;font-size:24px;">게시판 관리</h1>
+  <span style="color:#94a3b8;">role: {{ admin_role }}</span>
+</div>
+
+<div class="tabs">
+  <button type="button" class="tab-btn active" data-tab="notices">공지사항</button>
+  <button type="button" class="tab-btn" data-tab="inquiries">Q&A</button>
+</div>
+
+<section id="tab-notices" class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <h2 style="margin:0;">공지사항</h2>
+    <button type="button" id="notice-new" class="btn-sm btn-primary">글쓰기</button>
+  </div>
+  <div id="notice-editor" class="hidden" style="margin-top:12px;">
+    <input id="notice-title" class="field" placeholder="제목" />
+    <textarea id="notice-content" class="field textarea" style="margin-top:8px;" placeholder="내용"></textarea>
+    <label style="display:block;margin-top:8px;"><input id="notice-pinned" type="checkbox" /> 상단 고정</label>
+    <div class="btn-row">
+      <button type="button" id="notice-save" class="btn-sm btn-primary">저장</button>
+      <button type="button" id="notice-cancel" class="btn-sm">취소</button>
+    </div>
+  </div>
+  <table class="list-table">
+    <thead><tr><th>제목</th><th>상태</th><th>조회수</th><th>작성일</th><th>액션</th></tr></thead>
+    <tbody id="notice-tbody"><tr><td colspan="5" class="muted">로딩 중...</td></tr></tbody>
+  </table>
+</section>
+
+<section id="tab-inquiries" class="card hidden">
+  <h2 style="margin-top:0;">Q&A</h2>
+  <div class="board-grid">
+    <div>
+      <table class="list-table">
+        <thead><tr><th>상태</th><th>제목</th><th>등록일</th></tr></thead>
+        <tbody id="inq-tbody"><tr><td colspan="3" class="muted">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+    <div>
+      <div id="inq-detail" class="muted">문의를 선택해 주세요.</div>
+      <textarea id="inq-answer" class="field textarea" style="margin-top:10px;" placeholder="답변 내용을 입력하세요"></textarea>
+      <div class="btn-row">
+        <button type="button" id="inq-save" class="btn-sm btn-primary">답변 저장</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const tabButtons = [...document.querySelectorAll('.tab-btn')];
+  const tabNotices = document.getElementById('tab-notices');
+  const tabInquiries = document.getElementById('tab-inquiries');
+  const noticeEditor = document.getElementById('notice-editor');
+  const noticeTitle = document.getElementById('notice-title');
+  const noticeContent = document.getElementById('notice-content');
+  const noticePinned = document.getElementById('notice-pinned');
+  const noticeTbody = document.getElementById('notice-tbody');
+  const inqTbody = document.getElementById('inq-tbody');
+  const inqDetail = document.getElementById('inq-detail');
+  const inqAnswer = document.getElementById('inq-answer');
+
+  let editingNoticeId = null;
+  let inquiriesCache = [];
+  let selectedInquiryId = null;
+
+  function switchTab(tab) {
+    tabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
+    tabNotices.classList.toggle('hidden', tab !== 'notices');
+    tabInquiries.classList.toggle('hidden', tab !== 'inquiries');
+  }
+  tabButtons.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+  function fmtDate(value) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString('ko-KR');
+  }
+
+  async function loadNotices() {
+    const res = await fetch('/api/admin/notices?page=1&page_size=50');
+    const data = await res.json();
+    const items = data.items || [];
+    if (!items.length) {
+      noticeTbody.innerHTML = '<tr><td colspan="5" class="muted">등록된 공지사항이 없습니다.</td></tr>';
+      return;
+    }
+    noticeTbody.innerHTML = items.map((n) => `
+      <tr>
+        <td>${n.title}</td>
+        <td>${n.is_pinned ? '<span class="badge badge-answered">고정</span>' : '-'}</td>
+        <td>${n.view_count}</td>
+        <td>${fmtDate(n.created_at)}</td>
+        <td>
+          <button class="btn-sm" data-action="edit" data-id="${n.id}">수정</button>
+          <button class="btn-sm" data-action="delete" data-id="${n.id}">삭제</button>
+        </td>
+      </tr>
+    `).join('');
+    window.__notices = items;
+    noticeTbody.querySelectorAll('button[data-action]').forEach((btn) => {
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'edit') {
+        btn.addEventListener('click', () => window.editNotice(id));
+      } else {
+        btn.addEventListener('click', () => window.deleteNotice(id));
+      }
+    });
+  }
+
+  function clearEditor() {
+    editingNoticeId = null;
+    noticeTitle.value = '';
+    noticeContent.value = '';
+    noticePinned.checked = false;
+  }
+
+  window.editNotice = (noticeId) => {
+    const notice = (window.__notices || []).find((n) => n.id === noticeId);
+    if (!notice) return;
+    editingNoticeId = noticeId;
+    noticeTitle.value = notice.title || '';
+    noticeContent.value = notice.content || '';
+    noticePinned.checked = !!notice.is_pinned;
+    noticeEditor.classList.remove('hidden');
+  };
+
+  window.deleteNotice = async (noticeId) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/admin/notices/${noticeId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('삭제 실패');
+      return;
+    }
+    await loadNotices();
+  };
+
+  document.getElementById('notice-new').addEventListener('click', () => {
+    clearEditor();
+    noticeEditor.classList.remove('hidden');
+  });
+  document.getElementById('notice-cancel').addEventListener('click', () => {
+    noticeEditor.classList.add('hidden');
+    clearEditor();
+  });
+  document.getElementById('notice-save').addEventListener('click', async () => {
+    const payload = {
+      title: noticeTitle.value.trim(),
+      content: noticeContent.value.trim(),
+      is_pinned: noticePinned.checked,
+    };
+    if (!payload.title || !payload.content) {
+      alert('제목과 내용을 입력해 주세요.');
+      return;
+    }
+    const url = editingNoticeId ? `/api/admin/notices/${editingNoticeId}` : '/api/admin/notices';
+    const method = editingNoticeId ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      alert('저장 실패');
+      return;
+    }
+    noticeEditor.classList.add('hidden');
+    clearEditor();
+    await loadNotices();
+  });
+
+  function renderInquiryDetail(item) {
+    if (!item) {
+      inqDetail.textContent = '문의를 선택해 주세요.';
+      inqAnswer.value = '';
+      return;
+    }
+    const owner = item.user_email || item.guest_token || '알 수 없음';
+    inqDetail.innerHTML = `
+      <h3 style="margin-top:0;">${item.title}</h3>
+      <p class="muted">작성자: ${owner}</p>
+      <p>${item.content}</p>
+      ${item.answer_content ? `<hr style="border-color:#1e293b;" /><p><strong>기존 답변</strong></p><p>${item.answer_content}</p>` : ''}
+    `;
+    inqAnswer.value = item.answer_content || '';
+  }
+
+  async function loadInquiries() {
+    const res = await fetch('/api/admin/inquiries?page=1&page_size=100');
+    const data = await res.json();
+    inquiriesCache = data.items || [];
+    if (!inquiriesCache.length) {
+      inqTbody.innerHTML = '<tr><td colspan="3" class="muted">문의가 없습니다.</td></tr>';
+      renderInquiryDetail(null);
+      return;
+    }
+    inqTbody.innerHTML = inquiriesCache.map((q) => `
+      <tr class="clickable" data-id="${q.id}">
+        <td>${q.status === 'PENDING' ? '<span class="badge badge-pending">대기</span>' : '<span class="badge badge-answered">완료</span>'}</td>
+        <td>${q.title}</td>
+        <td>${fmtDate(q.created_at)}</td>
+      </tr>
+    `).join('');
+    document.querySelectorAll('#inq-tbody tr.clickable').forEach((row) => {
+      row.addEventListener('click', () => {
+        selectedInquiryId = row.dataset.id;
+        renderInquiryDetail(inquiriesCache.find((x) => x.id === selectedInquiryId));
+      });
+    });
+    selectedInquiryId = inquiriesCache[0].id;
+    renderInquiryDetail(inquiriesCache[0]);
+  }
+
+  document.getElementById('inq-save').addEventListener('click', async () => {
+    if (!selectedInquiryId) {
+      alert('먼저 문의를 선택해 주세요.');
+      return;
+    }
+    const answer = inqAnswer.value.trim();
+    if (!answer) {
+      alert('답변 내용을 입력해 주세요.');
+      return;
+    }
+    const res = await fetch(`/api/admin/inquiries/${selectedInquiryId}/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer_content: answer }),
+    });
+    if (!res.ok) {
+      alert('답변 저장 실패');
+      return;
+    }
+    await loadInquiries();
+    alert('답변이 저장되었습니다.');
+  });
+
+  loadNotices();
+  loadInquiries();
+</script>
+{% endblock %}
+

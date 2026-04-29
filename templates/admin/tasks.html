@@ -1,0 +1,217 @@
+{% extends "admin/base.html" %}
+{% block title %}Task Admin - Flairy{% endblock %}
+{% block head %}
+<style>
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .filter-btn { border:1px solid var(--line); border-radius:8px; padding:7px 11px; background:#1e293b; color:var(--text); cursor:pointer; font-size:13px; }
+  .filter-btn.active { background:var(--primary); border-color:var(--primary); }
+  .table-wrap { overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:middle; }
+  th { color:var(--muted); white-space:nowrap; }
+  .badge { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+  .badge-pending { background:rgba(234,179,8,.2); color:#facc15; }
+  .badge-completed { background:rgba(34,197,94,.2); color:#4ade80; }
+  .badge-failed { background:rgba(239,68,68,.2); color:#f87171; }
+  .btn-sm { border:0; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px; font-weight:600; }
+  .btn-retry { background:#2563eb; color:#fff; }
+  .btn-delete { background:#7f1d1d; color:#fecaca; }
+  .btn-log { background:#334155; color:#e2e8f0; }
+  .muted { color:var(--muted); }
+  .pager { display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .pager-btn { border:1px solid var(--line); border-radius:8px; padding:6px 10px; background:#1e293b; color:var(--text); cursor:pointer; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:9999; }
+  .modal-backdrop.open { display:flex; }
+  .modal { width:min(780px,92vw); max-height:80vh; overflow:auto; background:#0f172a; border:1px solid var(--line); border-radius:12px; }
+  .modal-header { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .modal-body { padding:12px 14px; }
+  pre { margin:0; white-space:pre-wrap; word-break:break-word; color:#fca5a5; font-size:12px; line-height:1.5; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-top">
+  <h1 style="margin:0;font-size:24px;">작업 관리</h1>
+  <span style="color:#94a3b8;">role: {{ admin_role }}</span>
+</div>
+
+<section class="card">
+  <div class="toolbar">
+    <button class="filter-btn active" data-status="all" type="button">전체</button>
+    <button class="filter-btn" data-status="pending" type="button">진행중</button>
+    <button class="filter-btn" data-status="success" type="button">성공</button>
+    <button class="filter-btn" data-status="fail" type="button">실패</button>
+    <span id="summary" class="muted" style="margin-left:auto;">-</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>생성일시</th>
+          <th>유저</th>
+          <th>타입</th>
+          <th>상태</th>
+          <th>메시지</th>
+          <th>액션</th>
+        </tr>
+      </thead>
+      <tbody id="taskRows">
+        <tr><td colspan="6" class="muted">로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <button id="prevBtn" class="pager-btn" type="button">이전</button>
+    <span id="pageInfo" class="muted">-</span>
+    <button id="nextBtn" class="pager-btn" type="button">다음</button>
+  </div>
+</section>
+
+<div id="logModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <strong>에러 로그</strong>
+      <button id="closeLogModal" class="pager-btn" type="button">닫기</button>
+    </div>
+    <div class="modal-body">
+      <pre id="logBody"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var state = { status: "all", page: 1, pageSize: 20, pages: 1, total: 0 };
+
+  function esc(v) {
+    var d = document.createElement("div");
+    d.textContent = v == null ? "" : String(v);
+    return d.innerHTML;
+  }
+  function badge(status) {
+    var s = (status || "").toUpperCase();
+    if (s === "COMPLETED") return '<span class="badge badge-completed">COMPLETED</span>';
+    if (s === "FAILED") return '<span class="badge badge-failed">FAILED</span>';
+    return '<span class="badge badge-pending">' + esc(s || "PENDING") + "</span>";
+  }
+  function setActiveFilter() {
+    document.querySelectorAll(".filter-btn").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.status === state.status);
+    });
+  }
+  function openModal(text) {
+    document.getElementById("logBody").textContent = (text || "").trim() || "기록된 에러 로그가 없습니다.";
+    var m = document.getElementById("logModal");
+    m.classList.add("open");
+    m.setAttribute("aria-hidden", "false");
+  }
+  function closeModal() {
+    var m = document.getElementById("logModal");
+    m.classList.remove("open");
+    m.setAttribute("aria-hidden", "true");
+  }
+
+  function loadTasks() {
+    setActiveFilter();
+    var q = new URLSearchParams({
+      status: state.status,
+      page: String(state.page),
+      page_size: String(state.pageSize)
+    });
+    fetch("/api/admin/tasks?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        state.total = data.total || 0;
+        state.pages = data.pages || 1;
+        if (state.page > state.pages) {
+          state.page = state.pages;
+          return loadTasks();
+        }
+        document.getElementById("summary").textContent = "총 " + state.total + "건";
+        document.getElementById("pageInfo").textContent = state.page + " / " + state.pages;
+        document.getElementById("prevBtn").disabled = state.page <= 1;
+        document.getElementById("nextBtn").disabled = state.page >= state.pages;
+        var rows = data.items || [];
+        var tbody = document.getElementById("taskRows");
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="muted">데이터가 없습니다.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = "";
+        rows.forEach(function (row) {
+          var tr = document.createElement("tr");
+          var user = row.user_email ? esc(row.user_email) : ("guest:" + esc((row.guest_token || "").slice(0, 12)));
+          tr.innerHTML =
+            "<td>" + esc(row.created_at || "") + "</td>" +
+            "<td>" + user + "</td>" +
+            "<td>" + esc(row.task_type || "") + "</td>" +
+            "<td>" + badge(row.status) + "</td>" +
+            "<td>" + esc(row.current_msg || "") + "</td>" +
+            "<td></td>";
+          var td = tr.querySelector("td:last-child");
+          if ((row.status || "").toUpperCase() === "FAILED") {
+            var logBtn = document.createElement("button");
+            logBtn.className = "btn-sm btn-log";
+            logBtn.textContent = "로그 보기";
+            logBtn.type = "button";
+            logBtn.addEventListener("click", function () { openModal(row.error_log || ""); });
+            td.appendChild(logBtn);
+            var retryBtn = document.createElement("button");
+            retryBtn.className = "btn-sm btn-retry";
+            retryBtn.style.marginLeft = "6px";
+            retryBtn.textContent = "재시도";
+            retryBtn.type = "button";
+            retryBtn.addEventListener("click", function () {
+              fetch("/api/admin/tasks/" + row.task_id + "/retry", { method: "POST", credentials: "same-origin" })
+                .then(function (r) { if (!r.ok) throw new Error("retry failed"); return r.json(); })
+                .then(function () { loadTasks(); })
+                .catch(function (e) { alert(String(e)); });
+            });
+            td.appendChild(retryBtn);
+          }
+          var delBtn = document.createElement("button");
+          delBtn.className = "btn-sm btn-delete";
+          delBtn.style.marginLeft = "6px";
+          delBtn.textContent = "삭제";
+          delBtn.type = "button";
+          delBtn.addEventListener("click", function () {
+            if (!confirm("정말 삭제할까요?")) return;
+            fetch("/api/admin/tasks/" + row.task_id, { method: "DELETE", credentials: "same-origin" })
+              .then(function (r) { if (!r.ok) throw new Error("delete failed"); return r.json(); })
+              .then(function () { loadTasks(); })
+              .catch(function (e) { alert(String(e)); });
+          });
+          td.appendChild(delBtn);
+          tbody.appendChild(tr);
+        });
+      })
+      .catch(function () {
+        document.getElementById("taskRows").innerHTML = '<tr><td colspan="6" class="muted">조회 실패</td></tr>';
+      });
+  }
+
+  document.querySelectorAll(".filter-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      state.status = btn.dataset.status || "all";
+      state.page = 1;
+      loadTasks();
+    });
+  });
+  document.getElementById("prevBtn").addEventListener("click", function () {
+    if (state.page > 1) { state.page -= 1; loadTasks(); }
+  });
+  document.getElementById("nextBtn").addEventListener("click", function () {
+    if (state.page < state.pages) { state.page += 1; loadTasks(); }
+  });
+  document.getElementById("closeLogModal").addEventListener("click", closeModal);
+  document.getElementById("logModal").addEventListener("click", function (e) {
+    if (e.target.id === "logModal") closeModal();
+  });
+
+  loadTasks();
+})();
+</script>
+{% endblock %}
+

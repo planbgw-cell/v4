@@ -1,0 +1,215 @@
+{% extends "admin/base.html" %}
+{% block title %}Users Admin - Flairy{% endblock %}
+{% block head %}
+<style>
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .search-input{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0f172a;color:var(--text);min-width:260px}
+  .btn{border:1px solid var(--line);background:#1e293b;color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
+  .btn.primary{background:var(--primary);border-color:var(--primary)}
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;margin-bottom:12px}
+  .card-item{background:#0f172a;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .label{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .value{font-size:22px;font-weight:700}
+  .table-wrap{overflow:auto}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid #1e293b;text-align:left;font-size:14px;white-space:nowrap}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+  .on{background:#14532d;color:#86efac}
+  .off{background:#7f1d1d;color:#fca5a5}
+  .icon-btn{border:none;background:transparent;color:#93c5fd;cursor:pointer;margin-left:6px;font-size:13px}
+  .icon-btn:hover{color:#dbeafe}
+  .pager{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px}
+  .muted{color:var(--muted)}
+  @media (max-width:900px){.cards{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-top">
+  <h1 style="margin:0;font-size:24px;">회원 관리</h1>
+  <span style="color:#94a3b8;">role: {{ admin_role }}</span>
+</div>
+<section class="card">
+  <div class="cards">
+    <div class="card-item"><div class="label">전체 가입자</div><div id="totalUsers" class="value">0</div></div>
+    <div class="card-item"><div class="label">오늘 신규 가입</div><div id="todayUsers" class="value">0</div></div>
+    <div class="card-item"><div class="label">전체 저장공간 사용량</div><div id="totalStorage" class="value">0 B</div></div>
+  </div>
+
+  <div class="toolbar">
+    <input id="searchInput" class="search-input" placeholder="이메일 또는 provider 검색" />
+    <button id="searchBtn" class="btn primary" type="button">검색</button>
+    <button id="resetBtn" class="btn" type="button">초기화</button>
+    <span id="summary" class="muted" style="margin-left:auto;">-</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>이메일</th>
+          <th>가입일</th>
+          <th>마지막 접속</th>
+          <th>프로젝트 수</th>
+          <th>사용량</th>
+          <th>상태</th>
+          <th>액션</th>
+        </tr>
+      </thead>
+      <tbody id="userRows"><tr><td colspan="7" class="muted">로딩 중...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="pager">
+    <button id="prevBtn" type="button" class="btn">이전</button>
+    <span id="pageInfo" class="muted">-</span>
+    <button id="nextBtn" type="button" class="btn">다음</button>
+  </div>
+</section>
+
+<script>
+(function () {
+  var state = { page: 1, pageSize: 20, pages: 1, total: 0, search: "" };
+  var rowsEl = document.getElementById("userRows");
+  var summaryEl = document.getElementById("summary");
+  var pageInfoEl = document.getElementById("pageInfo");
+  var totalUsersEl = document.getElementById("totalUsers");
+  var todayUsersEl = document.getElementById("todayUsers");
+  var totalStorageEl = document.getElementById("totalStorage");
+  var searchInputEl = document.getElementById("searchInput");
+
+  function fmtNum(v){ return Number(v || 0).toLocaleString(); }
+  function fmtDate(v){ return v ? new Date(v).toLocaleString("ko-KR") : "-"; }
+  function fmtBytes(bytes){
+    var n = Number(bytes || 0);
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function bindActionButtons() {
+    rowsEl.querySelectorAll("button[data-user-id]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var userId = btn.dataset.userId;
+        var nextActive = btn.dataset.nextActive === "true";
+        var message = nextActive ? "활성화 하시겠습니까?" : "정지 처리 하시겠습니까?";
+        if (!confirm(message)) return;
+        fetch("/api/admin/users/" + userId + "/status", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ is_active: nextActive }),
+        }).then(function (r) {
+          if (!r.ok) throw new Error("status");
+          return r.json();
+        }).then(function () {
+          loadUsers();
+        }).catch(function () {
+          alert("상태 변경에 실패했습니다.");
+        });
+      });
+    });
+    rowsEl.querySelectorAll("button[data-refresh-user-id]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var userId = btn.dataset.refreshUserId;
+        btn.disabled = true;
+        fetch("/api/admin/users/" + userId + "/storage/refresh", {
+          method: "POST",
+          credentials: "same-origin",
+        }).then(function (r) {
+          if (!r.ok) throw new Error("refresh");
+          return r.json();
+        }).then(function (d) {
+          var cell = rowsEl.querySelector("td[data-storage-user-id='" + userId + "']");
+          if (cell && d && d.item) {
+            cell.firstChild.textContent = fmtBytes(d.item.storage_usage_bytes);
+          }
+          loadUsers();
+        }).catch(function () {
+          alert("사용량 재계산에 실패했습니다.");
+        }).finally(function () {
+          btn.disabled = false;
+        });
+      });
+    });
+  }
+
+  function renderRows(items) {
+    if (!items.length) {
+      rowsEl.innerHTML = '<tr><td colspan="7" class="muted">조회된 회원이 없습니다.</td></tr>';
+      return;
+    }
+    rowsEl.innerHTML = items.map(function (u) {
+      var badge = u.is_active
+        ? '<span class="badge on">활성</span>'
+        : '<span class="badge off">정지</span>';
+      var actionLabel = u.is_active ? "정지" : "활성화";
+      var nextActive = u.is_active ? "false" : "true";
+      return (
+        "<tr>" +
+          "<td>" + (u.email || "-") + "</td>" +
+          "<td>" + fmtDate(u.created_at) + "</td>" +
+          "<td>" + fmtDate(u.last_login_at) + "</td>" +
+          "<td>" + fmtNum(u.project_count) + "</td>" +
+          "<td data-storage-user-id='" + u.id + "'><span>" + fmtBytes(u.storage_usage_bytes) + "</span><button class='icon-btn' title='실시간 재계산' data-refresh-user-id='" + u.id + "'><i class='fa-solid fa-rotate-right'></i></button></td>" +
+          "<td>" + badge + "</td>" +
+          "<td><button class='btn' data-user-id='" + u.id + "' data-next-active='" + nextActive + "'>" + actionLabel + "</button></td>" +
+        "</tr>"
+      );
+    }).join("");
+    bindActionButtons();
+  }
+
+  function loadUsers() {
+    var url = "/api/admin/users?page=" + state.page + "&page_size=" + state.pageSize;
+    if (state.search) url += "&search=" + encodeURIComponent(state.search);
+    return fetch(url, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("load"); return r.json(); })
+      .then(function (d) {
+        state.total = d.total || 0;
+        state.pages = d.pages || 1;
+        renderRows(d.items || []);
+        pageInfoEl.textContent = state.page + " / " + state.pages;
+        summaryEl.textContent = "총 " + fmtNum(state.total) + "명";
+        totalUsersEl.textContent = fmtNum((d.summary || {}).total_users || 0);
+        todayUsersEl.textContent = fmtNum((d.summary || {}).today_new_users || 0);
+        totalStorageEl.textContent = fmtBytes((d.summary || {}).total_storage_bytes || 0);
+      })
+      .catch(function () {
+        rowsEl.innerHTML = '<tr><td colspan="7" class="muted">회원 목록을 불러오지 못했습니다.</td></tr>';
+      });
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", function () {
+    state.search = (searchInputEl.value || "").trim();
+    state.page = 1;
+    loadUsers();
+  });
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    searchInputEl.value = "";
+    state.search = "";
+    state.page = 1;
+    loadUsers();
+  });
+  searchInputEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("searchBtn").click();
+    }
+  });
+  document.getElementById("prevBtn").addEventListener("click", function () {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    loadUsers();
+  });
+  document.getElementById("nextBtn").addEventListener("click", function () {
+    if (state.page >= state.pages) return;
+    state.page += 1;
+    loadUsers();
+  });
+
+  loadUsers();
+})();
+</script>
+{% endblock %}
+

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Flairy Admin{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --line: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --primary: #6366f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, "Noto Sans KR", system-ui, -apple-system, sans-serif;
+      background: #020617;
+      color: var(--text);
+    }
+    .admin-shell { display: flex; min-height: 100vh; }
+    .admin-sidebar {
+      width: 220px;
+      background: var(--bg);
+      border-right: 1px solid var(--line);
+      padding: 20px 14px;
+    }
+    .brand { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+    .nav-link {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      background: transparent;
+    }
+    .nav-link.active, .nav-link:hover { background: #1e293b; }
+    .admin-main { flex: 1; padding: 24px; }
+    .admin-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .admin-meta {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .session-warning {
+      display: none;
+      width: 100%;
+      text-align: center;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      border-radius: 10px;
+      background: #7f1d1d;
+      color: #fecaca;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="brand">Flairy Admin</div>
+      <a class="nav-link {% if request.url.path == '/admin/stats' %}active{% endif %}" href="/admin/stats">
+        <i class="fa-solid fa-chart-line" style="width:16px;margin-right:8px;"></i>통계 대시보드
+      </a>
+      <a class="nav-link {% if request.url.path == '/admin/tasks' %}active{% endif %}" href="/admin/tasks">
+        <i class="fa-solid fa-list-check" style="width:16px;margin-right:8px;"></i>작업 관리
+      </a>
+      <a class="nav-link {% if request.url.path == '/admin/board' %}active{% endif %}" href="/admin/board">
+        <i class="fa-regular fa-clipboard" style="width:16px;margin-right:8px;"></i>게시판 관리
+      </a>
+      <a class="nav-link {% if request.url.path == '/admin/users' %}active{% endif %}" href="/admin/users">
+        <i class="fa-solid fa-users" style="width:16px;margin-right:8px;"></i>회원 관리
+      </a>
+      <a class="nav-link {% if request.url.path == '/admin/audit' %}active{% endif %}" href="/admin/audit">
+        <i class="fa-solid fa-shield-halved" style="width:16px;margin-right:8px;"></i>감사 로그
+      </a>
+    </aside>
+    <main class="admin-main">
+      <div id="sessionWarning" class="session-warning">보안을 위해 세션이 곧 만료됩니다.</div>
+      <div class="admin-meta">
+        <span>서버 시간: <span id="serverNowDisplay">{{ server_now or "-" }}</span></span>
+        <span>세션 만료: {{ admin_session_expires_at or "-" }}</span>
+        <span id="sessionRemaining">남은 시간: —</span>
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script>
+  (function () {
+    var expiresAtStr = "{{ admin_session_expires_at or '' }}";
+    if (!expiresAtStr) return;
+    var expireMs = Date.parse(expiresAtStr);
+    if (Number.isNaN(expireMs)) return;
+
+    var warningEl = document.getElementById("sessionWarning");
+    var remainEl = document.getElementById("sessionRemaining");
+    var warnAt = expireMs - (5 * 60 * 1000);
+    var loggedOut = false;
+
+    function fmtRemain(ms) {
+      if (ms <= 0) return "0:00";
+      var m = Math.floor(ms / 60000);
+      var s = Math.floor((ms % 60000) / 1000);
+      return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function logoutNow() {
+      if (loggedOut) return;
+      loggedOut = true;
+      fetch("/admin/logout", { credentials: "same-origin", method: "GET" })
+        .finally(function () {
+          window.location.href = "/admin/login";
+        });
+    }
+
+    function tick() {
+      var now = Date.now();
+      var remain = expireMs - now;
+      if (remainEl) remainEl.textContent = "남은 시간: " + fmtRemain(remain);
+      if (warningEl) {
+        warningEl.style.display = now >= warnAt ? "block" : "none";
+      }
+      if (now >= expireMs) logoutNow();
+    }
+
+    tick();
+    setInterval(tick, 30000);
+
+    var now0 = Date.now();
+    if (now0 < expireMs) {
+      setTimeout(logoutNow, Math.max(0, expireMs - now0));
+    } else {
+      logoutNow();
+    }
+    if (now0 < warnAt) {
+      setTimeout(function () {
+        if (warningEl) warningEl.style.display = "block";
+      }, Math.max(0, warnAt - now0));
+    } else if (now0 < expireMs) {
+      if (warningEl) warningEl.style.display = "block";
+    }
+  })();
+  </script>
+</body>
+</html>
+

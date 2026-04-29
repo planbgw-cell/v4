@@ -296,7 +296,6 @@
   window.FlairyWES = {
     saveActiveTask: saveActiveTask,
     clearActiveTask: clearActiveTask,
-    getActiveTaskId: getActiveTaskId,
     checkActiveTask: checkActiveTask,
     stopPolling: stopPolling,
     initFromMagicLink: initFromMagicLink,
