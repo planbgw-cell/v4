@@ -17,9 +17,91 @@
     margin-right: auto;
     box-sizing: border-box;
   }
-  /* 앨범 열람 중: 좌측 스크롤 리스트 숨김 → GPU 레이어 부담 완화 */
-  #mypage-list-container.mypage-list-container--suspended {
-    display: none !important;
+  /* PC: 앨범 열람 중에도 리스트는 유지(살짝 dim) */
+  @media (min-width: 1024px) {
+    #mypage-list-container.mypage-list-container--suspended {
+      display: block !important;
+      opacity: 0.6;
+      pointer-events: auto;
+      transition: opacity 0.3s ease;
+    }
+    #mypage-list-container.mypage-list-container--suspended:hover {
+      opacity: 1;
+    }
+  }
+  /* 모바일/태블릿: 기존 보호 모드 유지 */
+  @media (max-width: 1023px) {
+    #mypage-list-container {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(88vw, 360px);
+      height: 100dvh;
+      z-index: 1000;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      display: flex !important;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      gap: 0.5rem;
+      padding: 1rem 0.75rem;
+      background: #ffffff;
+      border-right: 1px solid #e5e7eb;
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.24);
+    }
+    #mypage-list-container.mypage-list-container--suspended {
+      display: flex !important;
+    }
+    #mypage-list-container.is-open {
+      transform: translateX(0);
+    }
+    .mypage-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 990;
+      background: rgba(15, 23, 42, 0.35);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(1px);
+    }
+    .mypage-drawer-backdrop.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mypage-drawer-fab {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 980;
+      border: 1px solid #4f46e5;
+      background: #4f46e5;
+      color: #ffffff;
+      border-radius: 9999px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
+    }
+    #viewer-display-area.drawer-paused {
+      pointer-events: none;
+      opacity: 0.75;
+      filter: blur(1px);
+    }
+  }
+  @media (min-width: 1024px) {
+    .mypage-drawer-fab,
+    .mypage-drawer-backdrop {
+      display: none !important;
+    }
+  }
+  /* PC 앨범 모드에서 리스트 렌더 비용 완화 */
+  #mypage-list-container.low-spec-mode .project-item,
+  #mypage-list-container.low-spec-mode .mypage-list-item,
+  #mypage-list-container.low-spec-mode .delete-project-btn {
+    box-shadow: none !important;
+    filter: none !important;
+    transition: none !important;
   }
   /* 앨범 3D: 독립 스태킹 문맥으로 헤더·내비와 합성 분리 */
   #viewer-display-area.viewer-album-active {
@@ -35,6 +117,29 @@
     position: relative;
     z-index: 10;
   }
+  /* 글로벌 레이어 서열 고정 */
+  #mypageDrawerToggle { z-index: 10000 !important; }
+  #mypage-list-container { z-index: 9999 !important; }
+  #mypageDrawerBackdrop { z-index: 9998 !important; }
+  .mypage-viewer-main { z-index: 10; }
+  .mypage-list-aside { z-index: 1; }
+  @media (max-width: 1023px) {
+    /* 모바일 앨범 모드에서 부모 stacking context 제약 해제 */
+    .mypage-shell.mypage-shell--album-mode .mypage-list-aside,
+    .mypage-shell.mypage-shell--album-mode .mypage-viewer-main {
+      position: static;
+      z-index: auto;
+    }
+    /* drawer-paused 상태에서도 드로어 자체 인터랙션은 보장 */
+    #mypage-list-container {
+      pointer-events: auto !important;
+    }
+    /* 백드롭 시인성 강화 */
+    .mypage-drawer-backdrop {
+      background: rgba(15, 23, 42, 0.48);
+      backdrop-filter: blur(2px);
+    }
+  }
 </style>
 {% endblock %}
 
@@ -48,6 +153,7 @@
     <div class="p-4 border-b border-gray-100">
       <h1 class="text-xl font-semibold text-gray-800">내 보관함</h1>
     </div>
+    <div id="mypageListAnchor" aria-hidden="true"></div>
     <div id="mypage-list-container" class="flex md:flex-col overflow-x-auto md:overflow-x-visible md:overflow-y-auto flex-1 gap-2 p-3 md:p-3" style="min-height: 0;">
       {% for project in projects %}
       <div class="project-item flex items-center gap-1 flex-shrink-0 md:flex-shrink rounded-lg border border-transparent md:border-gray-200">
@@ -92,6 +198,16 @@
     </div>
   </main>
 </div>
+<button
+  id="mypageDrawerToggle"
+  type="button"
+  class="mypage-drawer-fab"
+  aria-controls="mypage-list-container"
+  aria-expanded="false"
+>
+  목록 보기
+</button>
+<div id="mypageDrawerBackdrop" class="mypage-drawer-backdrop" aria-hidden="true"></div>
 {% include "partials/share_modal.html" %}
 {% endblock %}
 
@@ -108,6 +224,60 @@
 (function () {
   var emptyStateHtml = '<div class="text-center text-gray-500 max-w-sm"><p class="text-6xl mb-4" aria-hidden="true">📭</p><p class="text-lg font-medium text-gray-600">아직 저장된 프로젝트가 없습니다</p><p class="text-sm mt-2">새 앨범이나 영상을 만들면 여기에 표시됩니다.</p></div>';
 
+  function isDesktop() {
+    return !!(window.matchMedia && window.matchMedia("(min-width: 1024px)").matches);
+  }
+
+  function isMobileOrTablet() {
+    return !isDesktop();
+  }
+
+  function relocateDrawerForMobile() {
+    var drawer = document.getElementById("mypage-list-container");
+    var anchor = document.getElementById("mypageListAnchor");
+    if (!drawer || !anchor) return;
+    if (isMobileOrTablet()) {
+      if (drawer.parentElement !== document.body) {
+        document.body.appendChild(drawer);
+      }
+      drawer.classList.add("portal-relocated");
+      return;
+    }
+    if (drawer.parentElement !== anchor.parentElement) {
+      anchor.parentElement.insertBefore(drawer, anchor.nextSibling);
+    }
+    drawer.classList.remove("portal-relocated");
+  }
+
+  function setDrawerOpen(open) {
+    var list = document.getElementById("mypage-list-container");
+    var backdrop = document.getElementById("mypageDrawerBackdrop");
+    var area = document.getElementById("viewer-display-area");
+    var toggle = document.getElementById("mypageDrawerToggle");
+    if (!list || !backdrop || !area || !toggle) return;
+    if (!isMobileOrTablet()) {
+      list.classList.remove("is-open");
+      backdrop.classList.remove("is-open");
+      area.classList.remove("drawer-paused");
+      toggle.setAttribute("aria-expanded", "false");
+      backdrop.setAttribute("aria-hidden", "true");
+      return;
+    }
+    if (open) {
+      list.classList.add("is-open");
+      backdrop.classList.add("is-open");
+      area.classList.add("drawer-paused");
+      toggle.setAttribute("aria-expanded", "true");
+      backdrop.setAttribute("aria-hidden", "false");
+      return;
+    }
+    list.classList.remove("is-open");
+    backdrop.classList.remove("is-open");
+    area.classList.remove("drawer-paused");
+    toggle.setAttribute("aria-expanded", "false");
+    backdrop.setAttribute("aria-hidden", "true");
+  }
+
   function restoreMypageAlbumChrome() {
     var list = document.getElementById("mypage-list-container");
     var area = document.getElementById("viewer-display-area");
@@ -115,6 +285,7 @@
     var shell = document.querySelector(".mypage-shell");
     if (list) {
       list.classList.remove("mypage-list-container--suspended");
+      list.classList.remove("low-spec-mode");
       list.removeAttribute("aria-hidden");
     }
     if (area) {
@@ -126,6 +297,7 @@
     if (shell) {
       shell.classList.remove("mypage-shell--album-mode");
     }
+    setDrawerOpen(false);
   }
 
   function suspendMypageAlbumChrome() {
@@ -135,7 +307,13 @@
     var shell = document.querySelector(".mypage-shell");
     if (list) {
       list.classList.add("mypage-list-container--suspended");
-      list.setAttribute("aria-hidden", "true");
+      if (isDesktop()) {
+        list.classList.add("low-spec-mode");
+        list.removeAttribute("aria-hidden");
+      } else {
+        list.classList.remove("low-spec-mode");
+        list.setAttribute("aria-hidden", "true");
+      }
     }
     if (area) {
       area.classList.add("viewer-album-active");
@@ -146,6 +324,7 @@
     if (shell) {
       shell.classList.add("mypage-shell--album-mode");
     }
+    setDrawerOpen(false);
   }
 
   document.body.addEventListener("htmx:afterSwap", function (ev) {
@@ -159,6 +338,7 @@
       } else {
         restoreMypageAlbumChrome();
       }
+      setDrawerOpen(false);
       if (hasViewerRoot || hasFlipbookRoot) {
         target.classList.add("viewer-content-loaded");
       }
@@ -199,7 +379,46 @@
     });
   }
 
+  var drawerToggle = document.getElementById("mypageDrawerToggle");
+  if (drawerToggle) {
+    drawerToggle.addEventListener("click", function () {
+      var list = document.getElementById("mypage-list-container");
+      if (!list) return;
+      setDrawerOpen(!list.classList.contains("is-open"));
+    });
+  }
+
+  var drawerBackdrop = document.getElementById("mypageDrawerBackdrop");
+  if (drawerBackdrop) {
+    drawerBackdrop.addEventListener("click", function () {
+      setDrawerOpen(false);
+    });
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") {
+      setDrawerOpen(false);
+    }
+  });
+
+  window.addEventListener("resize", function () {
+    relocateDrawerForMobile();
+    if (!isMobileOrTablet()) {
+      setDrawerOpen(false);
+    }
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", relocateDrawerForMobile);
+  } else {
+    relocateDrawerForMobile();
+  }
+
   document.getElementById("mypage-list-container") && document.getElementById("mypage-list-container").addEventListener("click", function (ev) {
+    var listLink = ev.target.closest(".mypage-list-item");
+    if (listLink && isMobileOrTablet()) {
+      setDrawerOpen(false);
+    }
     var btn = ev.target.closest(".delete-project-btn");
     if (!btn) return;
     ev.preventDefault();
