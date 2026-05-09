@@ -3,7 +3,7 @@
 JSONB ai_analysis 필드 읽기/쓰기 포함.
 """
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Union
+from typing import Any, Optional, TypedDict, Union
 from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
@@ -234,6 +234,44 @@ def get_media_files_by_project(db: Session, project_id: UUID) -> list[MediaFile]
         .filter(MediaFile.project_id == project_id)
         .order_by(MediaFile.order_index)
         .all()
+    )
+
+
+class ProjectMediaReadiness(TypedDict):
+    """프로젝트 미디어 트랜스코딩·준비 상태 요약."""
+
+    is_media_ready: bool
+    has_media_failure: bool
+    pending_count: int
+    failed_count: int
+    total_count: int
+
+
+def get_project_media_readiness(db: Session, project_id: UUID) -> ProjectMediaReadiness:
+    """모든 파일이 READY일 때만 is_media_ready. 미디어 없음은 준비 안 됨으로 간주."""
+    rows = get_media_files_by_project(db, project_id)
+    if not rows:
+        return ProjectMediaReadiness(
+            is_media_ready=False,
+            has_media_failure=False,
+            pending_count=0,
+            failed_count=0,
+            total_count=0,
+        )
+    pending = 0
+    failed = 0
+    for m in rows:
+        s = (m.processing_status or "").strip().upper()
+        if s == "FAILED":
+            failed += 1
+        elif s != "READY":
+            pending += 1
+    return ProjectMediaReadiness(
+        is_media_ready=(pending == 0 and failed == 0),
+        has_media_failure=(failed > 0),
+        pending_count=pending,
+        failed_count=failed,
+        total_count=len(rows),
     )
 
 

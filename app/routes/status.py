@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.crud import get_project
+from app.crud import get_project, get_project_media_readiness
 from app.database import SessionLocal
 
 router = APIRouter(prefix="/api", tags=["status"])
@@ -49,6 +49,11 @@ async def get_project_status(request: Request, project_id: str, debug: str = "")
         project = get_project(db, uid)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        media_ready = get_project_media_readiness(db, uid)
+        is_media_ready = media_ready["is_media_ready"]
+        has_media_failure = media_ready["has_media_failure"]
+        media_pending_count = media_ready["pending_count"]
+        media_failed_count = media_ready["failed_count"]
         status = (project.status or "PENDING").strip().upper()
         raw = getattr(project, "mode", None)
         mode = (getattr(raw, "value", None) if raw is not None and hasattr(raw, "value") else None) or (raw if isinstance(raw, str) else None) or "rule_based"
@@ -110,6 +115,10 @@ async def get_project_status(request: Request, project_id: str, debug: str = "")
                 "progress_message": progress_message,
                 "logs_tail": logs_tail,
                 "ai_pipeline_debug": ai_pipeline_debug,
+                "is_media_ready": is_media_ready,
+                "has_media_failure": has_media_failure,
+                "media_pending_count": media_pending_count,
+                "media_failed_count": media_failed_count,
             },
         )
     finally:

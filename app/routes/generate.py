@@ -17,6 +17,7 @@ from sqlalchemy import text
 from app.crud import (
     get_latest_video_task_by_project,
     get_project,
+    get_project_media_readiness,
     mark_video_task_status,
     update_project_output_path,
     update_project_status,
@@ -448,6 +449,31 @@ def _ai_analysis_incomplete(project) -> bool:
     return any(mf for mf in image_files if not mf.ai_analysis)
 
 
+@router.get("/projects/{project_id}/media-readiness")
+async def api_project_media_readiness(project_id: str):
+    """프로젝트 미디어 트랜스코딩 준비 여부 (progress 페이지·외부 클라이언트용 JSON)."""
+    try:
+        uid = UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid project_id")
+    db = SessionLocal()
+    try:
+        project = get_project(db, uid)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        r = get_project_media_readiness(db, uid)
+        return {
+            "project_id": project_id,
+            "is_media_ready": r["is_media_ready"],
+            "has_media_failure": r["has_media_failure"],
+            "pending_count": r["pending_count"],
+            "failed_count": r["failed_count"],
+            "total_count": r["total_count"],
+        }
+    finally:
+        db.close()
+
+
 @router.post("/projects/{project_id}/generate")
 async def api_generate(
     project_id: str,
@@ -466,6 +492,17 @@ async def api_generate(
         project = get_project(db, uid)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        readiness = get_project_media_readiness(db, uid)
+        if not readiness["is_media_ready"]:
+            if readiness["has_media_failure"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="미디어 최적화에 실패한 파일이 있습니다. 파일을 확인 후 다시 시도해 주세요.",
+                )
+            raise HTTPException(
+                status_code=409,
+                detail="미디어 최적화가 완료될 때까지 잠시 후 다시 시도해 주세요.",
+            )
         status = (project.status or "PENDING").upper()
 
         if _is_ai_mode(project) and _ai_analysis_incomplete(project):

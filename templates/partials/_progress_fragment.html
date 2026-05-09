@@ -1,5 +1,33 @@
 {# HTMX가 갱신하는 영역. data-status/data-mode/data-sub-status/data-project-type로 클라이언트 분기. #}
-<div id="progress-fragment" data-status="{{ status }}" data-mode="{{ mode }}" data-sub-status="{{ sub_status }}" data-project-type="{{ project_type | default('video') }}" data-total="{{ total }}" data-processed="{{ processed }}" data-percentage="{{ percentage }}" class="rounded-lg border border-gray-200 bg-white p-6">
+<div id="progress-fragment" data-status="{{ status }}" data-mode="{{ mode }}" data-sub-status="{{ sub_status }}" data-project-type="{{ project_type | default('video') }}" data-total="{{ total }}" data-processed="{{ processed }}" data-percentage="{{ percentage }}" data-is-media-ready="{% if is_media_ready %}true{% else %}false{% endif %}" data-has-media-failure="{% if has_media_failure %}true{% else %}false{% endif %}" class="rounded-lg border border-gray-200 bg-white p-6">
+  {% if has_media_failure %}
+  <div class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
+    <p class="text-center text-sm font-medium text-red-800">
+      일부 미디어 최적화에 실패했습니다. (실패 {{ media_failed_count }}건)
+    </p>
+    <p class="text-center text-xs text-red-600 mt-2">파일 형식·용량을 확인한 뒤 다시 업로드해 주세요.</p>
+  </div>
+  {% endif %}
+
+  {% if status == 'PENDING' and not is_media_ready and not has_media_failure %}
+  <p class="text-center text-lg font-medium text-gray-800 mb-8">
+    {% if project_type | default('video') == 'album' %}
+    디지털 앨범을 만들 준비 중이에요
+    {% else %}
+    하이라이트 영상을 만들 준비 중이에요
+    {% endif %}
+  </p>
+  <div class="py-6">
+    <div class="flex justify-center mb-6">
+      <span class="inline-block w-14 h-14 border-4 border-indigo-100 rounded-full animate-spin border-t-indigo-600"></span>
+    </div>
+    <p class="text-center text-lg font-semibold text-indigo-700">미디어 최적화 중 (GPU 가속 활용)...</p>
+    <p class="text-center text-sm text-gray-500 mt-3">동영상을 웹 재생에 맞게 변환하고 있습니다. 잠시만 기다려 주세요.</p>
+    {% if media_pending_count > 0 %}
+    <p class="text-center text-xs text-gray-400 mt-2">처리 대기·진행 중인 파일: {{ media_pending_count }}개</p>
+    {% endif %}
+  </div>
+  {% else %}
   <p class="text-center text-lg font-medium text-gray-800 mb-6">
     {% if project_type | default('video') == 'album' %}
     디지털 앨범을 만들고 있어요
@@ -51,6 +79,7 @@
     </li>
   </ul>
   <p class="text-center text-sm text-gray-500 mt-4">{{ message }}</p>
+  {% endif %}
   {% if logs_tail %}
   <div
     id="debug-logs"

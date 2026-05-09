@@ -216,6 +216,18 @@ ZOOMPAN_AI_MAX_ZOOM = 1.4
 # 가로 사진 배경 블러 강도 (감성 배경)
 LANDSCAPE_BOXBLUR = "40:20"
 
+
+def _rule_based_landscape_blur_pad_chain() -> str:
+    """가로·정사각 소스: 전경은 가로폭에 fit, 상하는 블러 배경. 베이직 이미지/동영상 공통."""
+    return (
+        f"split[src][dup];"
+        f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+        f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
+        f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
+        f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]"
+    )
+
+
 # Rule-based 첫 클립 앨범 제목 오버레이 (1080 기준 약 6~8%)
 RULE_BASED_TITLE_FONT_SIZE = 72
 RULE_BASED_TITLE_TOP_GRADIENT_H = 0.20  # 화면 상단 20% 밴드
@@ -661,14 +673,28 @@ class FlairyVideoEngine:
         aspect_916 = CANVAS_W / CANVAS_H
         is_portrait = (w < h)
 
-        # Rule-based video: 원본 모션 보존을 위해 zoompan 없이 fit/crop만 적용
+        # Rule-based video: 세로=중앙 크롭, 가로=블러 패딩(전경 전체 보존)
         if not use_ai and not apply_zoompan:
-            fit_only = (
-                f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-                f"crop={CANVAS_W}:{CANVAS_H}:(iw-{CANVAS_W})/2:(ih-{CANVAS_H})/2,"
-                "setsar=1[vid]"
+            if is_portrait:
+                fit_only = (
+                    f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                    f"crop={CANVAS_W}:{CANVAS_H}:(iw-{CANVAS_W})/2:(ih-{CANVAS_H})/2,"
+                    "setsar=1[vid]"
+                )
+                logger.info(
+                    "[RENDER] rule_based video VF portrait_center_crop file=%s %sx%s",
+                    file_id,
+                    w,
+                    h,
+                )
+                return rot_prefix + fit_only
+            logger.info(
+                "[RENDER] rule_based video VF landscape_blur_pad file=%s %sx%s",
+                file_id,
+                w,
+                h,
             )
-            return rot_prefix + fit_only
+            return rot_prefix + _rule_based_landscape_blur_pad_chain()
 
         # Rule-based: Pillow 전처리로 이미 1080x1920이면 zoompan만 적용
         if not use_ai and preprocessed_fhd:
@@ -694,14 +720,7 @@ class FlairyVideoEngine:
                 )
                 return rot_prefix + fill_crop + "," + _build_zoompan_rule(clip_frames) + "[vid]"
             # 가로(landscape): 블러 배경 + 밝기 감소 + 전경 중앙 배치
-            blur_chain = (
-                f"split[src][dup];"
-                f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-                f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
-                f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
-                f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]"
-            )
-            return rot_prefix + blur_chain
+            return rot_prefix + _rule_based_landscape_blur_pad_chain()
 
         # 로깅: AI는 DB 기준 세로/가로만
         if use_db_dimensions:

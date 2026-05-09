@@ -64,6 +64,8 @@
   function maybeTriggerGenerate() {
     const fragment = document.getElementById("progress-fragment");
     if (!fragment) return;
+    if (fragment.getAttribute("data-has-media-failure") === "true") return;
+    if (fragment.getAttribute("data-is-media-ready") !== "true") return;
     const status = fragment.getAttribute("data-status");
     const mode = fragment.getAttribute("data-mode") || "rule_based";
 
