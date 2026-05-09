@@ -212,6 +212,23 @@ def ensure_users_table_addons() -> None:
         pass
 
 
+def ensure_media_processing_status_column() -> None:
+    """media_files에 processing_status 컬럼/인덱스를 보장하고 기존 데이터 정규화."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE media_files ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) NOT NULL DEFAULT 'PENDING'"
+            ))
+            conn.execute(text(
+                "UPDATE media_files SET processing_status = 'READY' WHERE processing_status IS NULL OR processing_status = 'PENDING'"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_media_files_processing_status ON media_files (processing_status)"
+            ))
+    except Exception:
+        pass
+
+
 def ensure_admin_action_logs_table() -> None:
     """관리자 감사 로그 테이블/인덱스를 보장한다."""
     try:

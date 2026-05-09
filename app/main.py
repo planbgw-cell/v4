@@ -44,6 +44,7 @@ from app.database import (
     ensure_admin_users_table,
     ensure_board_tables,
     ensure_logs_column,
+    ensure_media_processing_status_column,
     ensure_project_type_column,
     ensure_user_id_column,
     ensure_users_table_addons,
@@ -81,6 +82,7 @@ def on_startup():
     ensure_admin_users_table()
     ensure_board_tables()
     ensure_users_table_addons()
+    ensure_media_processing_status_column()
     ensure_admin_action_logs_table()
     for route in app.routes:
         print(f"[Route Check] Path: {route.path}")

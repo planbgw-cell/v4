@@ -47,6 +47,7 @@ from app.services.narrative_service import (
     reorder_by_ai_scores,
 )
 from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
+from app.utils.ffmpeg_accel import build_h264_encoder_args, run_ffmpeg_with_fallback
 from app.utils.path_manager import (
     CINEMATIC_FONT_PRIMARY,
     CINEMATIC_FONT_FALLBACK,
@@ -291,11 +292,10 @@ def get_h264_encoder_args() -> list[str]:
     if USE_HEVC:
         return ["-c:v", "libx265", "-crf", "26", "-preset", "fast", "-tag:v", "hvc1"]
     if _detect_nvenc():
-        # NVENC: -cq ≈ CRF, -preset p4 ≈ 빠른 프리셋
-        return ["-c:v", "h264_nvenc", "-cq", str(OUTPUT_CRF), "-preset", "p4"]
+        return build_h264_encoder_args(prefer_gpu=True, cq=OUTPUT_CRF, cpu_crf=OUTPUT_CRF)
     if _detect_videotoolbox():
         return ["-c:v", "h264_videotoolbox", "-q:v", "65"]
-    return ["-c:v", "libx264", "-crf", str(OUTPUT_CRF), "-preset", "fast"]
+    return build_h264_encoder_args(prefer_gpu=False, cq=OUTPUT_CRF, cpu_crf=OUTPUT_CRF)
 
 
 def get_video_encoding_args() -> list[str]:
@@ -577,6 +577,7 @@ class FlairyVideoEngine:
         used_upright_file: bool = False,
         preprocessed_fhd: bool = False,
         clip_frames: int = CLIP_FRAMES,
+        apply_zoompan: bool = True,
     ) -> str:
         """
         9:16(1080x1920) 캔버스용 -vf 문자열 생성.
@@ -624,6 +625,15 @@ class FlairyVideoEngine:
         aspect_src = w / h if h else 0
         aspect_916 = CANVAS_W / CANVAS_H
         is_portrait = (w < h)
+
+        # Rule-based video: 원본 모션 보존을 위해 zoompan 없이 fit/crop만 적용
+        if not use_ai and not apply_zoompan:
+            fit_only = (
+                f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                f"crop={CANVAS_W}:{CANVAS_H}:(iw-{CANVAS_W})/2:(ih-{CANVAS_H})/2,"
+                "setsar=1[vid]"
+            )
+            return rot_prefix + fit_only
 
         # Rule-based: Pillow 전처리로 이미 1080x1920이면 zoompan만 적용
         if not use_ai and preprocessed_fhd:
@@ -865,11 +875,11 @@ class FlairyVideoEngine:
         ]
         logger.info("FFmpeg 실행: %s", " ".join(cmd))
         try:
-            result = subprocess.run(
+            result = run_ffmpeg_with_fallback(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
+                timeout_sec=180,
+                logger=logger,
+                conditional_hwaccel_cuda=False,
             )
             if result.returncode != 0:
                 logger.error("FFmpeg stderr: %s", result.stderr)
@@ -934,6 +944,7 @@ class FlairyVideoEngine:
             media_file=media_file,
             use_ai=use_ai,
             clip_frames=zm_frames,
+            apply_zoompan=use_ai,
         )
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
@@ -988,14 +999,20 @@ class FlairyVideoEngine:
             str(out_path),
         ]
         logger.info(
-            "동영상 클립 정규화 (out=%.3fs src=%.3fs slow=%s zm_frames=%d): %s",
+            "동영상 클립 정규화 (out=%.3fs src=%.3fs slow=%s zm_frames=%d zoompan=%s): %s",
             clip_dur_out,
             src_d,
             slow,
             zm_frames,
+            "on" if use_ai else "off(video)",
             " ".join(cmd),
         )
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = run_ffmpeg_with_fallback(
+            cmd,
+            timeout_sec=300,
+            logger=logger,
+            conditional_hwaccel_cuda=True,
+        )
         if result.returncode != 0:
             logger.error("FFmpeg video stderr: %s", result.stderr)
             err_snippet = (result.stderr or result.stdout or "").strip()[:500]
@@ -1143,7 +1160,12 @@ class FlairyVideoEngine:
             "-c:a", "aac", "-b:a", "128k",
             str(merged_path),
         ])
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = run_ffmpeg_with_fallback(
+            cmd,
+            timeout_sec=600,
+            logger=logger,
+            conditional_hwaccel_cuda=True,
+        )
         if result.returncode != 0:
             logger.error("FFmpeg xfade stderr: %s", result.stderr)
             raise RuntimeError(f"xfade 병합 실패: {result.stderr or result.stdout}")
@@ -1230,7 +1252,12 @@ class FlairyVideoEngine:
                 "-pix_fmt", "yuv420p", "-c:a", "aac",
                 "-shortest", str(out_path),
             ]
-            r2 = subprocess.run(encode, capture_output=True, text=True, timeout=180)
+            r2 = run_ffmpeg_with_fallback(
+                encode,
+                timeout_sec=180,
+                logger=logger,
+                conditional_hwaccel_cuda=False,
+            )
             if r2.returncode != 0 or not out_path.is_file():
                 raise RuntimeError(f"정적 클립 인코딩 실패: {r2.stderr or r2.stdout}")
             return out_path
@@ -1502,7 +1529,8 @@ class FlairyVideoEngine:
         )
         self._append_log("BGM 더킹 합성 중")
         duration = self._get_video_duration_sec(video_path)
-        fade_st = max(0.0, duration - 2.0)
+        fade_duration_sec = 3.0
+        fade_st = max(0.0, duration - fade_duration_sec)
         duck_threshold = float(os.environ.get("DUCK_THRESHOLD", "0.12"))
         duck_threshold = max(0.08, min(0.2, duck_threshold))
         # 1단: 영상 원음(nav) 대비 BGM 강하게 누름(목표 ~-14dB, ratio=20 상한).
@@ -1526,6 +1554,8 @@ class FlairyVideoEngine:
                 "-y",
                 "-i",
                 str(video_path),
+                "-stream_loop",
+                "-1",
                 "-i",
                 str(bgm_path),
                 "-i",
@@ -1538,10 +1568,21 @@ class FlairyVideoEngine:
                 f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_ducked];"
                 "[bgm_ducked][nav_in]amix=inputs=2:duration=first:normalize=0[audio_out]"
             )
-            inputs = ["ffmpeg", "-y", "-i", str(video_path), "-i", str(bgm_path)]
+            inputs = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-stream_loop",
+                "-1",
+                "-i",
+                str(bgm_path),
+            ]
 
         if fade_st > 0:
-            filter_complex += f";[audio_out]afade=t=out:st={fade_st:.2f}:d=2[audio_out2]"
+            filter_complex += (
+                f";[audio_out]afade=t=out:st={fade_st:.2f}:d={fade_duration_sec:.2f}[audio_out2]"
+            )
             map_audio = "[audio_out2]"
         else:
             map_audio = "[audio_out]"
@@ -1572,6 +1613,16 @@ class FlairyVideoEngine:
         if result.returncode != 0:
             logger.error("FFmpeg BGM stderr: %s", result.stderr)
             raise RuntimeError(f"BGM 합성 실패: {result.stderr or result.stdout}")
+        final_duration = self._get_video_duration_sec(out_path)
+        logger.info(
+            "타임라인 검증: merged=%.3fs final=%.3fs delta=%.3fs",
+            duration,
+            final_duration,
+            abs(final_duration - duration),
+        )
+        self._append_log(
+            f"타임라인 검증: merged={duration:.2f}s final={final_duration:.2f}s"
+        )
         logger.info("최종 출력 (BGM 포함, 더킹·페이드 적용): %s", out_path)
         self._append_log("최종 출력 저장 완료")
         return out_path

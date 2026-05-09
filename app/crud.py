@@ -161,6 +161,7 @@ def create_media_file(
     file_type: str,
     order_index: int = 0,
     ai_analysis: Optional[dict[str, Any]] = None,
+    processing_status: str = "PENDING",
     is_selected: bool = True,
 ) -> MediaFile:
     """MediaFile 추가. ai_analysis는 JSONB에 저장."""
@@ -170,6 +171,7 @@ def create_media_file(
         file_type=file_type,
         order_index=order_index,
         ai_analysis=ai_analysis,
+        processing_status=processing_status,
         is_selected=is_selected,
     )
     db.add(m)
@@ -238,6 +240,21 @@ def get_media_files_by_project(db: Session, project_id: UUID) -> list[MediaFile]
 def get_media_file(db: Session, media_file_id: int) -> Optional[MediaFile]:
     """MediaFile 단건 조회."""
     return db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+
+
+def update_media_file_processing_status(
+    db: Session,
+    media_file_id: int,
+    processing_status: str,
+) -> Optional[MediaFile]:
+    """MediaFile의 처리 상태를 업데이트."""
+    m = db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+    if not m:
+        return None
+    m.processing_status = processing_status
+    db.commit()
+    db.refresh(m)
+    return m
 
 
 # ---------- VideoTasks ----------

@@ -72,6 +72,7 @@ class MediaFile(Base):
     file_type = Column(String(50), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
     ai_analysis = Column(JSONB, nullable=True)
+    processing_status = Column(String(20), nullable=False, default="PENDING")
     is_selected = Column(Boolean, default=True, nullable=False)
     # 물리 회전(Physical Baking) 후 규격. AI 전처리에서 exif_transpose 적용 후 측정한 width/height
     width = Column(Integer, nullable=True)

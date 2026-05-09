@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app.utils.ffmpeg_accel import build_h264_encoder_args, run_ffmpeg_with_fallback
+
 logger = logging.getLogger(__name__)
 
 FFPROBE_TIMEOUT_SEC = 60
@@ -109,8 +111,7 @@ def ensure_web_compatible_video(path: Path) -> Path:
         str(path),
         "-map",
         "0:v:0",
-        "-c:v",
-        "libx264",
+        *build_h264_encoder_args(prefer_gpu=True, cq=23, cpu_crf=23),
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -124,7 +125,12 @@ def ensure_web_compatible_video(path: Path) -> Path:
         cmd += ["-an"]
     cmd += [str(tmp_path)]
 
-    r = _run(cmd, FFMPEG_TIMEOUT_SEC)
+    r = run_ffmpeg_with_fallback(
+        cmd,
+        timeout_sec=FFMPEG_TIMEOUT_SEC,
+        logger=logger,
+        conditional_hwaccel_cuda=True,
+    )
     if r.returncode != 0 or not tmp_path.exists():
         err = (r.stderr or r.stdout or "").strip()[:2000]
         tmp_path.unlink(missing_ok=True)

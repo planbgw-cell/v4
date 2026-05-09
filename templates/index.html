@@ -726,7 +726,16 @@
         const url =
           '/progress/' + projectType + '/' + encodeURIComponent(projectId) +
           (debugMode ? '?debug=1' : '');
-        window.location.href = url;
+
+        const pendingIds = Array.isArray(data.pending_file_ids) ? data.pending_file_ids : [];
+        if (xhr.status === 202 && pendingIds.length > 0) {
+          showTranscodingNotice();
+          pollUploadStatuses(pendingIds, function () {
+            window.location.href = url;
+          });
+        } else {
+          window.location.href = url;
+        }
       } else {
         let message = '업로드 실패';
         try {
@@ -745,6 +754,42 @@
     };
 
     xhr.send(formData);
+  }
+
+  function showTranscodingNotice() {
+    counterMin.textContent = '영상 최적화 중... 잠시만 기다려 주세요.';
+    counterMin.classList.remove('text-amber-700');
+    counterMin.classList.add('text-indigo-700');
+  }
+
+  function pollUploadStatuses(fileIds, onReady) {
+    const maxAttempts = 300; // 10분 (2초 간격)
+    let attempts = 0;
+    const timer = setInterval(function () {
+      attempts += 1;
+      Promise.all(fileIds.map(function (id) {
+        return fetch('/api/upload/status/' + encodeURIComponent(id), { credentials: 'include' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; });
+      })).then(function (rows) {
+        const valid = rows.filter(Boolean);
+        if (!valid.length) return;
+        const statuses = valid.map(function (x) { return (x.processing_status || '').toUpperCase(); });
+        if (statuses.includes('FAILED')) {
+          clearInterval(timer);
+          markAllError('일부 영상 최적화에 실패했습니다. 파일을 확인 후 다시 시도해 주세요.');
+          return;
+        }
+        if (statuses.every(function (s) { return s === 'READY'; })) {
+          clearInterval(timer);
+          onReady();
+        }
+      });
+      if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        markAllError('영상 최적화 대기 시간이 초과되었습니다. 잠시 후 다시 확인해 주세요.');
+      }
+    }, 2000);
   }
 
   const btnGenVideo = document.getElementById('btnGenVideo');

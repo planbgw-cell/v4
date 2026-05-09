@@ -1,14 +1,13 @@
 """
 업로드 API: 프로젝트 생성 + 파일 저장 (Zero-Wait I/O, pathlib).
 사용자가 화면에서 드래그 앤 드롭으로 바꾼 순서가 그대로 order_index에 저장됨.
-
-🛡️ [Rule Set] Flairy v4.0 경로/프로세스 격리: 응답에 project_type 필수 반환.
-   클라이언트는 /progress/${project_type}/${project_id} 로 리다이렉트.
 """
+import logging
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user_optional
@@ -19,6 +18,7 @@ from app.services.video_service import run_ai_analysis
 from app.services.web_video_compat import VideoTranscodeError, ensure_web_compatible_video
 
 router = APIRouter(prefix="/api", tags=["upload"])
+logger = logging.getLogger(__name__)
 
 # 프로젝트 루트 (v4/)
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -53,6 +53,39 @@ def _validate_files(files: list[UploadFile]) -> None:
     # 개별 동영상 용량은 읽으면서 체크 (아래 저장 시)
 
 
+def _transcode_video_in_background(media_file_id: int, raw_abs_path: str) -> None:
+    """비디오 웹호환 트랜스코딩 백그라운드 작업."""
+    db: Session = SessionLocal()
+    try:
+        media = db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+        if not media:
+            return
+        media.processing_status = "PROCESSING"
+        db.commit()
+
+        src_path = Path(raw_abs_path)
+        final_path = ensure_web_compatible_video(src_path)
+        media.file_path = str(Path("storage") / "raw" / str(media.project_id) / final_path.name)
+        media.processing_status = "READY"
+        db.commit()
+    except VideoTranscodeError:
+        db.rollback()
+        media = db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+        if media:
+            media.processing_status = "FAILED"
+            db.commit()
+        logger.exception("동영상 트랜스코딩 실패: media_file_id=%s", media_file_id)
+    except Exception:
+        db.rollback()
+        media = db.query(MediaFile).filter(MediaFile.id == media_file_id).first()
+        if media:
+            media.processing_status = "FAILED"
+            db.commit()
+        logger.exception("비디오 백그라운드 작업 실패: media_file_id=%s", media_file_id)
+    finally:
+        db.close()
+
+
 @router.post("/upload")
 async def api_upload(
     background_tasks: BackgroundTasks,
@@ -62,7 +95,7 @@ async def api_upload(
     files: list[UploadFile] = File(default=[]),
     current_user=Depends(get_current_user_optional),
 ):
-    """프로젝트 생성 후 파일을 storage/raw/{project_id}/ 에 저장하고 MediaFiles에 기록. 순서 유지."""
+    """프로젝트 생성 후 파일 저장/DB 기록 후 202로 즉시 반환. 비디오는 백그라운드 트랜스코딩."""
     if len(files) < MIN_UPLOAD_FILES:
         raise HTTPException(
             status_code=400,
@@ -108,7 +141,9 @@ async def api_upload(
     project_raw_dir = STORAGE_RAW_BASE / str(project_id)
     project_raw_dir.mkdir(parents=True, exist_ok=True)
     saved_paths: list[Path] = []
-    media_entries: list[tuple[str, str, int]] = []  # (file_path_str, file_type, order_index)
+    media_entries: list[tuple[str, str, int, str, str]] = []  # (path, type, order, status, abs_path)
+    pending_video_jobs: list[tuple[int, str]] = []
+    file_ids: list[int] = []
 
     try:
         for order_index, upload_file in enumerate(files):
@@ -135,33 +170,26 @@ async def api_upload(
             stored_name = f"{uuid.uuid4().hex}_{safe_name}"
             out_path = project_raw_dir / stored_name
             out_path.write_bytes(content)
-            final_path = out_path
-            if is_video:
-                try:
-                    final_path = ensure_web_compatible_video(out_path)
-                except VideoTranscodeError as e:
-                    try:
-                        out_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"동영상 변환 실패(HEVC->H.264): {e!s}",
-                    ) from e
-            saved_paths.append(final_path)
-            file_path_str = str(Path("storage") / "raw" / str(project_id) / final_path.name)
-            media_entries.append((file_path_str, file_type, order_index))
+            saved_paths.append(out_path)
+            file_path_str = str(Path("storage") / "raw" / str(project_id) / out_path.name)
+            initial_status = "PENDING" if is_video else "READY"
+            media_entries.append((file_path_str, file_type, order_index, initial_status, str(out_path)))
 
         # DB에 한 번에 기록 (순서 = order_index 그대로)
-        for file_path_str, file_type, order_index in media_entries:
+        for file_path_str, file_type, order_index, processing_status, abs_path in media_entries:
             m = MediaFile(
                 project_id=project_id,
                 file_path=file_path_str,
                 file_type=file_type,
                 order_index=order_index,
+                processing_status=processing_status,
                 is_selected=True,
             )
             db.add(m)
+            db.flush()
+            file_ids.append(m.id)
+            if file_type == "video":
+                pending_video_jobs.append((m.id, abs_path))
         db.commit()
     except HTTPException:
         db.rollback()
@@ -184,10 +212,36 @@ async def api_upload(
 
     if project_mode == ProjectMode.AI:
         background_tasks.add_task(run_ai_analysis, project_id)
+    for media_file_id, abs_path in pending_video_jobs:
+        background_tasks.add_task(_transcode_video_in_background, media_file_id, abs_path)
 
-    return {
-        "project_id": str(project_id),
-        "project_type": project_type,
-        "task_id": task_id_str,
-        "guest_token": guest_token,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={
+            "project_id": str(project_id),
+            "project_type": project_type,
+            "task_id": task_id_str,
+            "guest_token": guest_token,
+            "file_ids": file_ids,
+            "pending_file_ids": [media_file_id for media_file_id, _ in pending_video_jobs],
+        },
+    )
+
+
+@router.get("/upload/status/{file_id}")
+async def get_upload_status(file_id: int):
+    """단일 파일 처리 상태 조회."""
+    db: Session = SessionLocal()
+    try:
+        media = db.query(MediaFile).filter(MediaFile.id == file_id).first()
+        if not media:
+            raise HTTPException(status_code=404, detail="file not found")
+        return {
+            "file_id": media.id,
+            "project_id": str(media.project_id),
+            "file_type": media.file_type,
+            "processing_status": (media.processing_status or "PENDING").upper(),
+            "file_path": media.file_path,
+        }
+    finally:
+        db.close()

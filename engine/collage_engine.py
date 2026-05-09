@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from app.models import MediaFile
+from app.utils.ffmpeg_accel import build_h264_encoder_args, run_ffmpeg_with_fallback
 from app.utils.path_manager import get_font_path_escaped_for_ffmpeg
 from engine.preprocess_media import ensure_fhd_portrait
 
@@ -365,9 +366,7 @@ def render_collage_clip(
         "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
         "-vf", vf_chain,
         "-t", str(duration),
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
+        *build_h264_encoder_args(prefer_gpu=True, cq=23, cpu_crf=23),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-shortest", str(out_path),
@@ -380,8 +379,11 @@ def render_collage_clip(
         CANVAS_H,
         COLLAGE_FFMPEG_TIMEOUT_SEC,
     )
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=COLLAGE_FFMPEG_TIMEOUT_SEC
+    result = run_ffmpeg_with_fallback(
+        cmd,
+        timeout_sec=COLLAGE_FFMPEG_TIMEOUT_SEC,
+        logger=logger,
+        conditional_hwaccel_cuda=False,
     )
     if frame_path.is_file():
         try:
@@ -461,18 +463,7 @@ def render_split_intro_clip(
         f"{duration:.3f}",
         "-r",
         "30",
-        "-c:v",
-        "libx264",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "4.2",
-        "-b:v",
-        "6M",
-        "-maxrate",
-        "8M",
-        "-bufsize",
-        "12M",
+        *build_h264_encoder_args(prefer_gpu=True, cq=23, cpu_crf=23),
         "-pix_fmt",
         "yuv420p",
         "-c:a",
@@ -480,7 +471,12 @@ def render_split_intro_clip(
         "-shortest",
         str(out_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=COLLAGE_FFMPEG_TIMEOUT_SEC)
+    result = run_ffmpeg_with_fallback(
+        cmd,
+        timeout_sec=COLLAGE_FFMPEG_TIMEOUT_SEC,
+        logger=logger,
+        conditional_hwaccel_cuda=False,
+    )
     for p in prep_paths:
         if p.exists():
             try:
