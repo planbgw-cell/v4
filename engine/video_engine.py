@@ -9,8 +9,11 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from threading import current_thread
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +42,11 @@ from app.crud import (
     update_project_ai_narrative_order,
     update_project_status,
 )
+from app.config import (
+    get_flairy_temp_dir,
+    get_highlight_merge_mode,
+    get_video_render_max_workers,
+)
 from app.database import ensure_logs_column, SessionLocal
 from app.models import MediaFile, Project
 from app.services.narrative_service import (
@@ -47,7 +55,7 @@ from app.services.narrative_service import (
     reorder_by_ai_scores,
 )
 from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
-from app.utils.ffmpeg_accel import build_h264_encoder_args, run_ffmpeg_with_fallback
+from app.utils.ffmpeg_accel import build_h264_encoder_args, get_accel_type, run_ffmpeg_with_fallback
 from app.utils.path_manager import (
     CINEMATIC_FONT_PRIMARY,
     CINEMATIC_FONT_FALLBACK,
@@ -133,6 +141,8 @@ HIGH_SCORE_IMAGE_SEC = 10.0
 XFADE_DURATION_MIN = 0.8
 XFADE_DURATION_MAX = 1.0
 XFADE_DURATION_DEFAULT = 0.9
+MERGE_MODE_XFADE = "xfade"
+MERGE_MODE_CONCAT = "concat"
 # 10초 AI 클립: 미세 줌 인크리먼트(프레임당), 최대 줌
 ZOOMPAN_AI_MICRO_INC = 0.0005
 ZOOMPAN_AI_MICRO_MAX_Z = 1.25
@@ -291,7 +301,8 @@ def get_h264_encoder_args() -> list[str]:
     """
     if USE_HEVC:
         return ["-c:v", "libx265", "-crf", "26", "-preset", "fast", "-tag:v", "hvc1"]
-    if _detect_nvenc():
+    accel = get_accel_type()
+    if accel in {"vaapi", "nvenc"}:
         return build_h264_encoder_args(prefer_gpu=True, cq=OUTPUT_CRF, cpu_crf=OUTPUT_CRF)
     if _detect_videotoolbox():
         return ["-c:v", "h264_videotoolbox", "-q:v", "65"]
@@ -388,9 +399,33 @@ class FlairyVideoEngine:
         self.base_dir = Path(base_dir)
         self.raw_dir = self.base_dir / "storage" / "raw" / str(project_id)
         self.final_dir = self.base_dir / "storage" / "final" / str(project_id)
-        self.temp_dir = self.base_dir / "storage" / "temp" / str(project_id)
+        temp_root = get_flairy_temp_dir()
+        if temp_root is not None:
+            self.temp_dir = temp_root / str(project_id)
+        else:
+            self.temp_dir = self.base_dir / "storage" / "temp" / str(project_id)
         # 싱글 포인트: 엔진 생성 시 NVENC 런타임 체크 1회 (캐시되어 이후 인코딩에서 재사용)
         _detect_nvenc()
+
+    def _build_image_vf_for_vaapi(self, vf: str) -> str:
+        """
+        이미지 클립에서 VAAPI 스케일 경로를 앞단에 배치.
+        이후 zoompan/drawtext/subtitles는 CPU에서 유지한다.
+        """
+        stripped = vf.strip()
+        if stripped.endswith("[vid]"):
+            stripped = stripped[:-5]
+        # 복합 그래프(zoompan/split/overlay)는 CPU 필터로 유지해 안정성 우선
+        if "zoompan" in stripped or ";" in stripped or "overlay=" in stripped:
+            return stripped
+        prefix = (
+            "format=nv12,hwupload,"
+            f"scale_vaapi=w={CANVAS_W}:h={CANVAS_H}:format=nv12,"
+            "hwdownload,format=nv12"
+        )
+        if stripped:
+            return prefix + "," + stripped
+        return prefix
 
     def _append_log(self, message: str) -> None:
         """
@@ -834,6 +869,8 @@ class FlairyVideoEngine:
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
             vf = vf[:-5]
+            if get_accel_type() == "vaapi":
+                vf = self._build_image_vf_for_vaapi(vf)
             if subtitle_text:
                 if use_ai:
                     vf += "," + self._build_emotional_caption_drawtext(
@@ -851,6 +888,8 @@ class FlairyVideoEngine:
         cmd = [
             "ffmpeg",
             "-y",
+            "-threads",
+            "1",
             "-loop",
             "1",
             "-i",
@@ -974,6 +1013,8 @@ class FlairyVideoEngine:
         cmd = [
             "ffmpeg",
             "-y",
+            "-threads",
+            "1",
             "-ignore_editlist",
             "1",
             "-i",
@@ -1050,10 +1091,75 @@ class FlairyVideoEngine:
             return "fade"
         e = emotion.strip().lower()
         if e in ("joy", "excited", "energetic", "happy"):
-            return ["circlecrop", "wipeleft", "slideleft"][index % 3]
+            return ["fade", "wipeleft", "slideleft"][index % 3]
         if e in ("peaceful", "sad", "calm", "melancholy", "nostalgic"):
-            return ["fade", "dissolve", "pixelize"][index % 3]
+            return ["fade", "dissolve", "fade"][index % 3]
         return "fade"
+
+    def _resolve_merge_mode(self, merge_mode_request: str | None = None) -> str:
+        """병합 모드 결정 우선순위: API 요청 > ENV > 기본(xfade)."""
+        req = (merge_mode_request or "").strip().lower()
+        env = get_highlight_merge_mode()
+        candidate = req or env or MERGE_MODE_XFADE
+        if candidate not in {MERGE_MODE_XFADE, MERGE_MODE_CONCAT}:
+            return MERGE_MODE_XFADE
+        return candidate
+
+    def _probe_clip_streams(self, clip_path: Path) -> dict[str, Any]:
+        """concat copy 호환성 확인용 스트림 프로파일 추출."""
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_streams",
+            "-of",
+            "json",
+            str(clip_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffprobe 실패: {result.stderr or result.stdout}")
+        data = json.loads(result.stdout or "{}")
+        streams = data.get("streams") or []
+        v = next((s for s in streams if s.get("codec_type") == "video"), {})
+        a = next((s for s in streams if s.get("codec_type") == "audio"), {})
+        pix_fmt = (v.get("pix_fmt") or "").strip().lower()
+        if pix_fmt.startswith("yuvj"):
+            pix_fmt = "yuv" + pix_fmt[4:]
+        return {
+            "v": (
+                v.get("codec_name"),
+                int(v.get("width") or 0),
+                int(v.get("height") or 0),
+                pix_fmt,
+            ),
+            "a": (
+                a.get("codec_name"),
+                int(a.get("sample_rate") or 0),
+                int(a.get("channels") or 0),
+            ),
+        }
+
+    def _can_concat_copy(self, clip_paths: list[Path]) -> bool:
+        """모든 클립이 concat demuxer -c copy 조건을 만족하는지 검사."""
+        if len(clip_paths) < 2:
+            return True
+        try:
+            base = self._probe_clip_streams(clip_paths[0])
+            for p in clip_paths[1:]:
+                cur = self._probe_clip_streams(p)
+                if cur != base:
+                    logger.warning(
+                        "concat copy 비호환 감지: base=%s cur=%s file=%s",
+                        base,
+                        cur,
+                        p.name,
+                    )
+                    return False
+            return True
+        except Exception as e:
+            logger.warning("concat 호환성 검사 실패: %s", e)
+            return False
 
     def _merge_clips_with_xfade(
         self,
@@ -1089,6 +1195,8 @@ class FlairyVideoEngine:
                 fd = float(override_fade_duration)
             else:
                 fd = self._fade_duration_for_emotion(incoming_emotion) if incoming_emotion else fade_duration
+            # Admin 8: xfade 겹침 구간을 25% 축소해 연산 프레임 수 절감
+            fd = max(0.2, fd * 0.75)
             fd = min(fd, min(durations[i], durations[i + 1]) * 0.5)
             fade_durations.append(fd)
             trans = self._xfade_transition_for_emotion(incoming_emotion, index=i)
@@ -1149,7 +1257,8 @@ class FlairyVideoEngine:
 
         filter_complex = video_filter + ";" + audio_filter
         encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
-        cmd = ["ffmpeg", "-y"]
+        filter_threads = max(1, min(4, os.cpu_count() or 4))
+        cmd = ["ffmpeg", "-y", "-filter_threads", str(filter_threads)]
         for p in clip_paths:
             cmd.extend(["-ignore_editlist", "1", "-i", str(p)])
         cmd.extend([
@@ -1157,7 +1266,7 @@ class FlairyVideoEngine:
             "-map", "[vout]", "-map", "[aout]",
             *encode_args,
             "-pix_fmt", "yuv420p", "-r", "30",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:a", "aac", "-b:a", "96k",
             str(merged_path),
         ])
         result = run_ffmpeg_with_fallback(
@@ -1721,11 +1830,12 @@ class FlairyVideoEngine:
             return pair
         return []
 
-    def _run(self, use_ai: bool = False) -> Path | None:
+    def _run(self, use_ai: bool = False, merge_mode_request: str | None = None) -> Path | None:
         """
         표준 5단계 파이프라인: [1] 큐레이션 [2] 인트로 콜라주 1개 [3] 본편 클립 [4] 자막·BGM [5] 병합.
         use_ai: True면 AI 자막·subject_box Ken Burns·인트로 1개만 적용. 아웃로 없음.
         """
+        t_pipeline_start = time.perf_counter()
         self._append_log("영상 생성 파이프라인 시작")
         db = SessionLocal()
         try:
@@ -1938,7 +2048,10 @@ class FlairyVideoEngine:
                 )
 
         # 본편 시퀀스: 전체 N장 각각 1클립 (선정된 클립에만 영문 자막 합성)
-        for index, mf in enumerate(main_media_list):
+        t_clip_stage_start = time.perf_counter()
+
+        def _build_clip_item(index: int, mf: MediaFile) -> tuple[int, Path, dict[str, Any], float]:
+            t_clip_item_start = time.perf_counter()
             caption = self._get_caption(mf, use_ai)
             subtitle_text: str | None = None
             if use_ai and index in subtitle_indices and mf.ai_analysis:
@@ -1974,17 +2087,50 @@ class FlairyVideoEngine:
                     overlay_album_title=overlay_title,
                 )
             else:
-                logger.info("지원하지 않는 타입 건너뜀: order_index=%s type=%s", mf.order_index, mf.file_type)
-                continue
-            clips.append(clip_path)
-            clip_timeline.append(
-                {
-                    "kind": mf.file_type,
-                    "media_id": mf.id,
-                    "duration_sec": d_sec,
-                    "score_100": _score_100_from_media(mf),
-                }
+                raise RuntimeError(f"지원하지 않는 타입: {mf.file_type}")
+            clip_elapsed = time.perf_counter() - t_clip_item_start
+            logger.info(
+                "STAGE_CLIP item kind=%s idx=%s thread=%s elapsed=%.3fs",
+                mf.file_type,
+                index,
+                current_thread().name,
+                clip_elapsed,
             )
+            timeline_entry = {
+                "kind": mf.file_type,
+                "media_id": mf.id,
+                "duration_sec": d_sec,
+                "score_100": _score_100_from_media(mf),
+            }
+            return index, clip_path, timeline_entry, clip_elapsed
+
+        configured_workers = get_video_render_max_workers()
+        max_workers = min(configured_workers, max(1, len(main_media_list)))
+        clip_results: dict[int, tuple[Path, dict[str, Any]]] = {}
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="clip-worker") as executor:
+            futures = {
+                executor.submit(_build_clip_item, index, mf): index
+                for index, mf in enumerate(main_media_list)
+            }
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    result_idx, clip_path, timeline_entry, _ = future.result()
+                except Exception as e:
+                    logger.exception("클립 생성 실패 idx=%s", idx)
+                    raise RuntimeError(f"클립 생성 실패 idx={idx}: {e}") from e
+                clip_results[result_idx] = (clip_path, timeline_entry)
+        for idx in range(len(main_media_list)):
+            if idx not in clip_results:
+                raise RuntimeError(f"클립 결과 누락 idx={idx}")
+            clip_path, timeline_entry = clip_results[idx]
+            clips.append(clip_path)
+            clip_timeline.append(timeline_entry)
+        logger.info(
+            "STAGE_CLIP total elapsed=%.3fs items=%d",
+            time.perf_counter() - t_clip_stage_start,
+            len(main_media_list),
+        )
 
         # 아웃로: 인트로 콜라주 첫 프레임만 정적으로 표시 (효과 없음)
         outro_added = False
@@ -2006,9 +2152,22 @@ class FlairyVideoEngine:
             self._append_log(warn_msg)
             return None
 
-        # 병합: [인트로] + [본편 N] + [아웃로(있으면)]. AI 시 감정별 xfade duration
+        merge_mode = self._resolve_merge_mode(merge_mode_request)
+        logger.info("MERGE_MODE: selected=%s request=%s", merge_mode, merge_mode_request)
+        self._append_log(f"MERGE_MODE={merge_mode}")
+
+        # 병합: [인트로] + [본편 N] + [아웃로(있으면)].
         logger.info("FFmpeg 병합 대상 클립 수: %d (1+%d%s)", len(clips), len(main_media_list), "+1(아웃로)" if outro_added else "")
-        if len(clips) >= 2 and use_ai:
+        t_merge_start = time.perf_counter()
+        if len(clips) >= 2 and merge_mode == MERGE_MODE_CONCAT:
+            if self._can_concat_copy(clips):
+                merged = self._merge_clips(clips)
+            else:
+                logger.warning("MERGE_MODE concat 비호환 -> xfade fallback")
+                self._append_log("MERGE_MODE=concat 비호환, xfade로 fallback")
+                merge_mode = MERGE_MODE_XFADE
+
+        if len(clips) >= 2 and use_ai and merge_mode == MERGE_MODE_XFADE:
             emotions_per_clip = (
                 [""] * (1 if has_intro else 0)
                 + [(mf.ai_analysis or {}).get("emotion", "") or "" for mf in main_media_list]
@@ -2022,7 +2181,7 @@ class FlairyVideoEngine:
                 beat_interval_sec=beat_interval_sec,
                 override_fade_duration=beat_fade_duration_sec,
             )
-        elif len(clips) >= 2:
+        elif len(clips) >= 2 and merge_mode == MERGE_MODE_XFADE:
             merged = self._merge_clips_with_xfade(
                 clips,
                 fade_duration=beat_fade_duration_sec,
@@ -2032,12 +2191,14 @@ class FlairyVideoEngine:
             )
         else:
             merged = self._merge_clips(clips)
+        logger.info("STAGE_MERGE elapsed=%.3fs", time.perf_counter() - t_merge_start)
         # Phase 4: 자막은 클립별 영문 감성(english_caption)만 사용, 전체의 약 45% 클립에만 노출.
         # 기존 한글 전체 오버레이(_apply_cinematic_overlay) 제거됨 → 병합본 그대로 사용.
         overlay_path = merged
         if not overlay_path.is_file():
             raise FileNotFoundError(f"BGM 입력 영상 없음: {overlay_path}. 병합/오버레이 단계 확인 필요.")
         self._write_render_timeline_json(clip_timeline, beat_fade_duration_sec)
+        t_audio_start = time.perf_counter()
         final_path = self._add_bgm(
             overlay_path,
             media_files=media_files if use_ai else None,
@@ -2045,16 +2206,19 @@ class FlairyVideoEngine:
             bgm_path=selected_bgm_path,
             bpm=selected_bpm,
         )
+        logger.info("STAGE_AUDIO elapsed=%.3fs", time.perf_counter() - t_audio_start)
         try:
             self._cleanup()
         except Exception as e:
             logger.warning("정리 단계 실패(무시, 영상은 완료됨): %s", e)
 
-        self._append_log("영상 생성 파이프라인 완료")
+        total_elapsed = time.perf_counter() - t_pipeline_start
+        logger.info("STAGE_TOTAL elapsed=%.3fs", total_elapsed)
+        self._append_log(f"영상 생성 파이프라인 완료 (총 {total_elapsed:.2f}s)")
         return final_path
 
-    def create_highlight(self, use_ai: bool = False) -> Path | None:
+    def create_highlight(self, use_ai: bool = False, merge_mode: str | None = None) -> Path | None:
         """
         하이라이트 영상 생성 진입점. use_ai에 따라 AI(Gemini) 분석 결과를 자막에 반영할지 분기.
         """
-        return self._run(use_ai=use_ai)
+        return self._run(use_ai=use_ai, merge_mode_request=merge_mode)

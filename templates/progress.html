@@ -42,6 +42,9 @@
   const isDebug = {{ "true" if debug else "false" }};
   let analysisTriggered = false;
   let renderTriggered = false;
+  const mergeModeParam = (new URLSearchParams(window.location.search).get("fast") === "1")
+    ? "?merge_mode=concat"
+    : "";
 
   function checkAndRedirect() {
     if (isDebug) return;
@@ -59,7 +62,7 @@
 
     if (status === "PENDING" && mode === "ai" && !analysisTriggered) {
       analysisTriggered = true;
-      fetch("/api/projects/" + projectId + "/generate", { method: "POST" })
+      fetch("/api/projects/" + projectId + "/generate" + mergeModeParam, { method: "POST" })
         .then(function (r) { return r.json(); })
         .then(function (d) { if (d.status === "accepted") console.log("AI 분석 시작:", d); })
         .catch(function (e) { console.warn("generate 호출 실패:", e); });
@@ -67,7 +70,7 @@
     }
     if (status === "PENDING" && mode === "rule_based" && !renderTriggered) {
       renderTriggered = true;
-      fetch("/api/projects/" + projectId + "/generate", { method: "POST" })
+      fetch("/api/projects/" + projectId + "/generate" + mergeModeParam, { method: "POST" })
         .then(function (r) { return r.json(); })
         .then(function (d) { if (d.status === "accepted") console.log("영상 생성 시작:", d); })
         .catch(function (e) { console.warn("generate 호출 실패:", e); });
@@ -75,7 +78,7 @@
     }
     if (status === "COMPOSING" && mode === "ai" && !renderTriggered) {
       renderTriggered = true;
-      fetch("/api/projects/" + projectId + "/generate", { method: "POST" })
+      fetch("/api/projects/" + projectId + "/generate" + mergeModeParam, { method: "POST" })
         .then(function (r) { return r.json(); })
         .then(function (d) { if (d.status === "accepted") console.log("영상 생성 시작:", d); })
         .catch(function (e) { console.warn("generate 호출 실패:", e); });

@@ -6,10 +6,13 @@
    video → FlairyVideoEngine.create_highlight() 만 사용.
 """
 import logging
+import json
+import uuid
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from sqlalchemy import text
 
 from app.crud import (
     get_latest_video_task_by_project,
@@ -18,6 +21,7 @@ from app.crud import (
     update_project_output_path,
     update_project_status,
 )
+from app.config import get_highlight_merge_mode
 from app.database import SessionLocal
 from app.storage import get_project_final_dir
 from app.services import narrative_service
@@ -28,6 +32,7 @@ from app.utils.color_utils import get_accent_color_hex, get_dominant_color_hex
 from engine.album_engine import build_layout, build_layout_ai, save_album_layout
 from engine.bgm_engine import get_dominant_emotion, select_bgm_path
 from engine.video_engine import FlairyVideoEngine
+from app.utils.ffmpeg_accel import get_accel_type
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -48,6 +53,59 @@ def _is_ai_mode(project) -> bool:
     return _mode_value(project) == "ai"
 
 
+def _classify_failure(message: str) -> str:
+    m = (message or "").lower()
+    if "vaapi" in m and ("permission denied" in m or "권한" in m):
+        return "VAAPI_PERMISSION"
+    if "out of memory" in m or "cannot allocate memory" in m:
+        return "OOM"
+    if "ffmpeg" in m and ("filter" in m or "invalid argument" in m):
+        return "FFMPEG_FILTER_ERROR"
+    if "gpu" in m or "nvenc" in m or "vaapi" in m:
+        return "GPU_ERROR"
+    if "database" in m or "sql" in m:
+        return "DB_ERROR"
+    return "UNKNOWN"
+
+
+def _log_admin_render_failure(
+    *,
+    project_id: UUID,
+    task_id: str | None,
+    message: str,
+    merge_mode_request: str | None,
+) -> None:
+    db = SessionLocal()
+    try:
+        db.execute(text("""
+            INSERT INTO admin_action_logs (
+                id, admin_id, action_type, target_id, details, ip_address, user_agent
+            )
+            VALUES (
+                :id, NULL, 'RENDER_FAIL', :target_id, CAST(:details AS jsonb), NULL, NULL
+            )
+        """), {
+            "id": str(uuid.uuid4()),
+            "target_id": str(project_id),
+            "details": json.dumps(
+                {
+                    "project_id": str(project_id),
+                    "task_id": task_id,
+                    "error_code": _classify_failure(message),
+                    "message": (message or "")[:1200],
+                    "accel_mode": get_accel_type().upper(),
+                    "merge_mode": (merge_mode_request or get_highlight_merge_mode() or "").upper(),
+                },
+                ensure_ascii=False,
+            ),
+        })
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def validate_ai_data(project) -> tuple[bool, list]:
     """
     선택된 이미지 미디어에 ai_analysis가 100% 있는지 검사.
@@ -65,7 +123,7 @@ def validate_ai_data(project) -> tuple[bool, list]:
     return (len(missing) == 0, [m.id for m in missing])
 
 
-def _run_generate_task(project_id_str: str) -> None:
+def _run_generate_task(project_id_str: str, merge_mode: str | None = None) -> None:
     """
     백그라운드에서 실행. project_type에 따라 영상 또는 앨범 설계도 생성.
     DB는 상태 갱신 시점에만 짧은 세션을 열고 닫는다.
@@ -121,10 +179,15 @@ def _run_generate_task(project_id_str: str) -> None:
                 return
     finally:
         db.close()
-    logger.info("영상 생성 시작: project_id=%s use_ai=%s", project_id, use_ai)
+    logger.info(
+        "영상 생성 시작: project_id=%s use_ai=%s merge_mode_request=%s",
+        project_id,
+        use_ai,
+        merge_mode,
+    )
     try:
         engine = FlairyVideoEngine(project_id, ROOT)
-        final_path = engine.create_highlight(use_ai=use_ai)
+        final_path = engine.create_highlight(use_ai=use_ai, merge_mode=merge_mode)
         if final_path is None:
             db = SessionLocal()
             try:
@@ -160,12 +223,15 @@ def _run_generate_task(project_id_str: str) -> None:
         finally:
             db.close()
         logger.info("영상 생성 완료: %s", final_path)
-    except Exception:
+    except Exception as e:
         logger.exception("영상 생성 중 오류: project_id=%s", project_id)
+        err_msg = str(e)
+        task_ref = None
         db = SessionLocal()
         try:
             update_project_status(db, project_id, "FAILED")
             task = get_latest_video_task_by_project(db, project_id)
+            task_ref = task
             if task:
                 mark_video_task_status(
                     db,
@@ -177,6 +243,15 @@ def _run_generate_task(project_id_str: str) -> None:
             pass
         finally:
             db.close()
+        try:
+            _log_admin_render_failure(
+                project_id=project_id,
+                task_id=str(task_ref.task_id) if task_ref else None,
+                message=err_msg,
+                merge_mode_request=merge_mode,
+            )
+        except Exception:
+            logger.exception("관리자 실패 감사로그 기록 실패: project_id=%s", project_id)
         raise
 
 
@@ -374,7 +449,11 @@ def _ai_analysis_incomplete(project) -> bool:
 
 
 @router.post("/projects/{project_id}/generate")
-async def api_generate(project_id: str, background_tasks: BackgroundTasks):
+async def api_generate(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    merge_mode: str | None = None,
+):
     """
     하이라이트 영상 생성 요청. AI 모드면 ai_analysis가 모두 채워진 뒤에만 렌더링 단계로 진입.
     """
@@ -419,13 +498,15 @@ async def api_generate(project_id: str, background_tasks: BackgroundTasks):
     mode_val = _mode_value(project) if project else "rule_based"
     raw_mode = getattr(project, "mode", None) if project else None
     logger.info(
-        "영상 렌더링 태스크 등록: project_id=%s mode=%s (raw type=%s value=%s, 다음 로그에서 use_ai 확인)",
+        "영상 렌더링 태스크 등록: project_id=%s mode=%s merge_mode_request=%s "
+        "(raw type=%s value=%s, 다음 로그에서 use_ai 확인)",
         project_id,
         mode_val,
+        merge_mode,
         type(raw_mode).__name__ if raw_mode is not None else "None",
         getattr(raw_mode, "value", raw_mode) if raw_mode is not None else None,
     )
-    background_tasks.add_task(_run_generate_task, project_id)
+    background_tasks.add_task(_run_generate_task, project_id, merge_mode)
     return {
         "status": "accepted",
         "message": "영상 생성이 시작되었습니다.",

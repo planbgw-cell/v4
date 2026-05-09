@@ -3,11 +3,13 @@
 사용자가 화면에서 드래그 앤 드롭으로 바꾼 순서가 그대로 order_index에 저장됨.
 """
 import logging
+import json
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user_optional
@@ -16,6 +18,8 @@ from app.database import SessionLocal
 from app.models import MediaFile, ProjectMode
 from app.services.video_service import run_ai_analysis
 from app.services.web_video_compat import VideoTranscodeError, ensure_web_compatible_video
+from app.config import get_highlight_merge_mode
+from app.utils.ffmpeg_accel import get_accel_type
 
 router = APIRouter(prefix="/api", tags=["upload"])
 logger = logging.getLogger(__name__)
@@ -32,6 +36,55 @@ MAX_VIDEO_BYTES = 150 * 1024 * 1024  # 150MB (Bytes)
 
 def _is_video(content_type: str) -> bool:
     return (content_type or "").startswith("video/")
+
+
+def _classify_transcode_failure(message: str) -> str:
+    m = (message or "").lower()
+    if "vaapi" in m and ("permission denied" in m or "권한" in m):
+        return "VAAPI_PERMISSION"
+    if "out of memory" in m:
+        return "OOM"
+    if "ffmpeg" in m and ("filter" in m or "invalid argument" in m):
+        return "FFMPEG_FILTER_ERROR"
+    if "gpu" in m or "nvenc" in m or "vaapi" in m:
+        return "GPU_ERROR"
+    return "UNKNOWN"
+
+
+def _log_admin_transcode_failure(
+    *,
+    media_file_id: int,
+    project_id: str | None,
+    message: str,
+) -> None:
+    db: Session = SessionLocal()
+    try:
+        db.execute(text("""
+            INSERT INTO admin_action_logs (
+                id, admin_id, action_type, target_id, details, ip_address, user_agent
+            ) VALUES (
+                :id, NULL, 'TRANSCODE_FAIL', :target_id, CAST(:details AS jsonb), NULL, NULL
+            )
+        """), {
+            "id": str(uuid.uuid4()),
+            "target_id": str(media_file_id),
+            "details": json.dumps(
+                {
+                    "media_file_id": media_file_id,
+                    "project_id": project_id,
+                    "error_code": _classify_transcode_failure(message),
+                    "message": (message or "")[:1200],
+                    "accel_mode": get_accel_type().upper(),
+                    "merge_mode": get_highlight_merge_mode().upper(),
+                },
+                ensure_ascii=False,
+            ),
+        })
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _validate_files(files: list[UploadFile]) -> None:
@@ -74,6 +127,11 @@ def _transcode_video_in_background(media_file_id: int, raw_abs_path: str) -> Non
         if media:
             media.processing_status = "FAILED"
             db.commit()
+            _log_admin_transcode_failure(
+                media_file_id=media_file_id,
+                project_id=str(media.project_id),
+                message="VideoTranscodeError",
+            )
         logger.exception("동영상 트랜스코딩 실패: media_file_id=%s", media_file_id)
     except Exception:
         db.rollback()
@@ -81,6 +139,11 @@ def _transcode_video_in_background(media_file_id: int, raw_abs_path: str) -> Non
         if media:
             media.processing_status = "FAILED"
             db.commit()
+            _log_admin_transcode_failure(
+                media_file_id=media_file_id,
+                project_id=str(media.project_id),
+                message="Background transcode exception",
+            )
         logger.exception("비디오 백그라운드 작업 실패: media_file_id=%s", media_file_id)
     finally:
         db.close()

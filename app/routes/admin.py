@@ -1,6 +1,7 @@
 import math
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -26,9 +27,11 @@ from app.core.auth_admin import (
     get_admin_payload_optional,
     require_admin_api,
 )
+from app.config import get_flairy_temp_dir, get_highlight_merge_mode, get_video_render_max_workers
 from app.database import get_db
 from app.routes.generate import _run_generate_task
 from app.services.storage_service import get_user_storage_usage_bytes, invalidate_user_storage_cache
+from app.utils.ffmpeg_accel import get_accel_type
 
 router = APIRouter(tags=["admin"])
 templates = Jinja2Templates(directory="templates")
@@ -261,6 +264,27 @@ def _serialize_audit_log_row(row) -> dict:
         "admin_id": str(row["admin_id"]) if row.get("admin_id") else None,
         "admin_username": row.get("admin_username"),
     }
+
+
+_TOTAL_RE = re.compile(r"영상 생성 파이프라인 완료 \(총 ([0-9.]+)s\)")
+_TIMELINE_RE = re.compile(r"타임라인 검증: merged=([0-9.]+)s")
+
+
+def _extract_latest_render_speed(logs: str | None) -> tuple[float, float] | None:
+    if not logs:
+        return None
+    total_matches = list(_TOTAL_RE.finditer(logs))
+    if not total_matches:
+        return None
+    total = float(total_matches[-1].group(1))
+    prefix = logs[: total_matches[-1].end()]
+    timeline_matches = list(_TIMELINE_RE.finditer(prefix))
+    if not timeline_matches:
+        return None
+    merged = float(timeline_matches[-1].group(1))
+    if total <= 0:
+        return None
+    return merged, total
 
 
 @router.get("/admin/stats")
@@ -682,8 +706,14 @@ def admin_system_health(
     storage_root = Path(__file__).resolve().parents[2] / "storage"
     storage_raw = storage_root / "raw"
     storage_total_bytes = _safe_dir_size_bytes(storage_raw)
+    configured_temp = get_flairy_temp_dir()
+    if configured_temp is None:
+        temp_path = storage_root / "temp"
+    else:
+        temp_path = configured_temp
 
     disk = psutil.disk_usage(str(storage_root))
+    temp_disk = psutil.disk_usage(str(temp_path))
     vm = psutil.virtual_memory()
     cpu_percent = psutil.cpu_percent(interval=0.1)
 
@@ -696,9 +726,50 @@ def admin_system_health(
         "disk_used_bytes": int(disk.used),
         "disk_free_bytes": int(disk.free),
         "disk_percent": round(float(disk.percent), 2),
+        "temp_path": str(temp_path),
+        "temp_total_bytes": int(temp_disk.total),
+        "temp_used_bytes": int(temp_disk.used),
+        "temp_free_bytes": int(temp_disk.free),
+        "temp_percent": round(float(temp_disk.percent), 2),
         "storage_total_bytes": int(storage_total_bytes),
+        "accel_mode": get_accel_type().upper(),
+        "merge_mode": get_highlight_merge_mode().upper(),
+        "render_workers": int(get_video_render_max_workers()),
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/api/admin/stats/render-speed")
+def admin_render_speed_stats(
+    admin_payload: dict = Depends(require_admin_api),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(text("""
+        SELECT id, logs, created_at
+        FROM projects
+        WHERE status = 'COMPLETED' AND logs IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 40
+    """)).mappings().all()
+    items: list[dict] = []
+    for row in rows:
+        parsed = _extract_latest_render_speed(row.get("logs"))
+        if not parsed:
+            continue
+        merged, total = parsed
+        items.append(
+            {
+                "project_id": str(row["id"]),
+                "video_sec": round(merged, 2),
+                "render_sec": round(total, 2),
+                "speed_ratio": round(merged / total, 3),
+                "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+            }
+        )
+        if len(items) >= 10:
+            break
+    avg_ratio = round(sum(x["speed_ratio"] for x in items) / len(items), 3) if items else 0.0
+    return {"items": items, "avg_speed_ratio": avg_ratio}
 
 
 @router.get("/api/admin/tasks")
