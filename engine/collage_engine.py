@@ -9,6 +9,11 @@ import subprocess
 from pathlib import Path
 
 from app.models import MediaFile
+from app.utils.audio_spec import (
+    clip_anullsrc_lavfi,
+    clip_audio_atrim_filter,
+    clip_audio_encode_args,
+)
 from app.utils.ffmpeg_accel import build_h264_encoder_args, run_ffmpeg_with_fallback
 from app.utils.path_manager import get_font_path_escaped_for_ffmpeg
 from engine.preprocess_media import ensure_fhd_portrait
@@ -360,16 +365,21 @@ def render_collage_clip(
         f"fade=t=out:st={fade_out_st:.3f}:d={fade_out},"
         f"{draw_divider},{draw_title}"
     )
+    dur = max(0.04, float(duration))
+    filter_complex = (
+        f"[0:v]{vf_chain}[v];[1:a]{clip_audio_atrim_filter(dur)}[a]"
+    )
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1", "-i", str(frame_path),
-        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-        "-vf", vf_chain,
-        "-t", str(duration),
+        "-f", "lavfi", "-i", clip_anullsrc_lavfi(),
+        "-filter_complex", filter_complex,
+        "-map", "[v]", "-map", "[a]",
+        "-t", f"{dur:.3f}",
         *build_h264_encoder_args(prefer_gpu=True, cq=23, cpu_crf=23),
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-shortest", str(out_path),
+        *clip_audio_encode_args(),
+        str(out_path),
     ]
     logger.info(
         "콜라주 FFmpeg 시작 (zoompan %dx%d→%dx%d, timeout=%ss)",
@@ -452,13 +462,13 @@ def render_split_intro_clip(
         "-f",
         "lavfi",
         "-i",
-        "anullsrc=channel_layout=stereo:sample_rate=44100",
+        clip_anullsrc_lavfi(),
         "-filter_complex",
-        filter_complex,
+        f"{filter_complex};[2:a]{clip_audio_atrim_filter(duration)}[a]",
         "-map",
         "[v]",
         "-map",
-        "2:a",
+        "[a]",
         "-t",
         f"{duration:.3f}",
         "-r",
@@ -466,9 +476,7 @@ def render_split_intro_clip(
         *build_h264_encoder_args(prefer_gpu=True, cq=23, cpu_crf=23),
         "-pix_fmt",
         "yuv420p",
-        "-c:a",
-        "aac",
-        "-shortest",
+        *clip_audio_encode_args(),
         str(out_path),
     ]
     result = run_ffmpeg_with_fallback(

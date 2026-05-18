@@ -1,0 +1,20 @@
+[Unit]
+Description=Flairy v4 API Service
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flairy
+Group=flairy
+WorkingDirectory=/home/flairy/v4
+EnvironmentFile=/home/flairy/v4/.env
+Environment="PATH=/home/flairy/v4/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/flairy/v4/venv/bin/gunicorn -w 5 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000 --timeout 600 --graceful-timeout 60 --max-requests 1000 --max-requests-jitter 100
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

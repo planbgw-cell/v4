@@ -328,6 +328,7 @@ async def viewer_page(
             media_files = getattr(project, "media_files", None) or []
             logger.info("[Album Viewer] project_id=%s media_count=%s", project_id, len(media_files))
         title = project.title or _project_title_by_type(type)
+        project_status = (getattr(project, "status", None) or "PENDING").strip().upper()
         video_url = _project_video_url(type, project_id, project.output_path)
         media_files = getattr(project, "media_files", None)
         thumb_url = _project_media_thumb_url(project_id, media_files)
@@ -343,6 +344,7 @@ async def viewer_page(
         "project_type": type,
         "mode": mode,
         "project_mode": project_mode,
+        "project_status": project_status,
         "current_user": current_user,
         "share_url": _absolute_url(request, f"/share/{type}/{project_id}"),
         "kakao_js_key": os.getenv("KAKAO_JS_KEY", "").strip(),
@@ -386,6 +388,7 @@ async def share_viewer_page(
         if project_mode is None:
             project_mode = "rule_based"
         title = project.title or _project_title_by_type(type)
+        project_status = (getattr(project, "status", None) or "PENDING").strip().upper()
         video_url = _project_video_url(type, project_id, project.output_path)
         media_files = getattr(project, "media_files", None)
         thumb_url = _project_media_thumb_url(project_id, media_files)
@@ -401,6 +404,7 @@ async def share_viewer_page(
         "project_type": type,
         "mode": "share",
         "project_mode": project_mode,
+        "project_status": project_status,
         "current_user": current_user,
         "share_url": _absolute_url(request, f"/share/{type}/{project_id}"),
         "kakao_js_key": os.getenv("KAKAO_JS_KEY", "").strip(),

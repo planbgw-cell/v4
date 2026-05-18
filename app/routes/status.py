@@ -25,6 +25,7 @@ STATUS_MESSAGES = {
     "COMPOSING": "페이지 구성 중...",
     "GENERATING": "하이라이트 영상/앨범 생성 중...",
     "COMPLETED": "생성 완료!",
+    "FAILED": "일시적인 서버 부하로 작업이 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.",
 }
 
 # 상세 단계 (sub_status). 클라이언트/UX용.
@@ -34,6 +35,7 @@ SUB_STATUS_MAP = {
     "COMPOSING": "COMPOSING",
     "GENERATING": "RENDERING",
     "COMPLETED": "COMPLETED",
+    "FAILED": "FAILED",
 }
 
 

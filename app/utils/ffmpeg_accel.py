@@ -177,9 +177,17 @@ def _ensure_vaapi_upload(cmd: Sequence[str]) -> list[str]:
         idx = out.index("-vf")
         if idx + 1 < len(out):
             vf = out[idx + 1]
-            need_upload = ("hwupload" not in vf) or ("hwdownload" in vf and not vf.rstrip().endswith("hwupload"))
-            if need_upload:
-                out[idx + 1] = vf + ",format=nv12,hwupload"
+            vf_trim = vf.rstrip()
+            # 라벨 [vid] 뒤에 쉼표로 이어붙이면 FFmpeg가 파싱 실패 → 라벨 제거 후 업로드 연결
+            if vf_trim.endswith("[vid]"):
+                base = vf_trim[:-5].rstrip().rstrip(",")
+                out[idx + 1] = base + ",format=nv12,hwupload"
+            else:
+                need_upload = ("hwupload" not in vf) or (
+                    "hwdownload" in vf and not vf_trim.endswith("hwupload")
+                )
+                if need_upload:
+                    out[idx + 1] = vf + ",format=nv12,hwupload"
     if "-filter_complex" in out:
         idx = out.index("-filter_complex")
         if idx + 1 < len(out):
@@ -250,6 +258,7 @@ def _to_cpu_fallback(cmd: Sequence[str]) -> list[str]:
             vf = vf.replace("format=nv12,hwupload,", "")
             vf = vf.replace(",hwupload", "").replace("format=nv12,", "")
             vf = vf.replace(",hwdownload,format=nv12", "")
+            vf = vf.replace(",hwdownload,format=yuv420p", "")
             vf = re.sub(
                 r"scale_vaapi=w=(\d+):h=(\d+):format=nv12",
                 r"scale=\1:\2",

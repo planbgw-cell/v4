@@ -15,6 +15,7 @@
   .badge-failed { background:rgba(239,68,68,.2); color:#f87171; }
   .btn-sm { border:0; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px; font-weight:600; }
   .btn-retry { background:#2563eb; color:#fff; }
+  .btn-terminate { background:#c2410c; color:#fff; }
   .btn-delete { background:#7f1d1d; color:#fecaca; }
   .btn-log { background:#334155; color:#e2e8f0; }
   .muted { color:var(--muted); }
@@ -151,7 +152,9 @@
             "<td>" + esc(row.current_msg || "") + "</td>" +
             "<td></td>";
           var td = tr.querySelector("td:last-child");
-          if ((row.status || "").toUpperCase() === "FAILED") {
+          var rowStatus = (row.status || "").toUpperCase();
+          var pendingStatuses = ["PENDING", "ANALYZING", "GENERATING", "COMPOSING"];
+          if (rowStatus === "FAILED") {
             var logBtn = document.createElement("button");
             logBtn.className = "btn-sm btn-log";
             logBtn.textContent = "로그 보기";
@@ -170,6 +173,27 @@
                 .catch(function (e) { alert(String(e)); });
             });
             td.appendChild(retryBtn);
+          }
+          if (pendingStatuses.indexOf(rowStatus) >= 0) {
+            var killBtn = document.createElement("button");
+            killBtn.className = "btn-sm btn-terminate";
+            killBtn.style.marginLeft = "6px";
+            killBtn.textContent = "강제 종료";
+            killBtn.type = "button";
+            killBtn.addEventListener("click", function () {
+              if (!confirm("이 작업을 강제 종료할까요? FFmpeg 프로세스에 종료 신호를 보내고 DB 상태를 FAILED로 바꿉니다.")) return;
+              fetch("/api/admin/tasks/" + row.task_id + "/terminate", { method: "POST", credentials: "same-origin" })
+                .then(function (r) {
+                  if (!r.ok) return r.json().then(function (j) { throw new Error(j.detail || r.status); });
+                  return r.json();
+                })
+                .then(function (data) {
+                  alert("처리했습니다. FFmpeg SIGTERM 시도: " + (data.ffmpeg_sigterm_sent != null ? data.ffmpeg_sigterm_sent : "?"));
+                  loadTasks();
+                })
+                .catch(function (e) { alert(String(e)); });
+            });
+            td.appendChild(killBtn);
           }
           var delBtn = document.createElement("button");
           delBtn.className = "btn-sm btn-delete";

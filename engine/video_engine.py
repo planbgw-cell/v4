@@ -54,6 +54,14 @@ from app.services.narrative_service import (
     reorder_by_ai_narrative,
     reorder_by_ai_scores,
 )
+from app.utils.audio_spec import (
+    CLIP_AUDIO_CHANNELS,
+    CLIP_AUDIO_CODEC,
+    CLIP_AUDIO_SAMPLE_RATE,
+    clip_anullsrc_lavfi,
+    clip_audio_atrim_filter,
+    clip_audio_encode_args,
+)
 from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
 from app.utils.ffmpeg_accel import build_h264_encoder_args, get_accel_type, run_ffmpeg_with_fallback
 from app.utils.path_manager import (
@@ -143,6 +151,11 @@ XFADE_DURATION_MAX = 1.0
 XFADE_DURATION_DEFAULT = 0.9
 MERGE_MODE_XFADE = "xfade"
 MERGE_MODE_CONCAT = "concat"
+# 클립·병합 후 스트림 길이 검증(AAC 프레임 한계로 완전 1ms 보장은 불가)
+CLIP_AV_SYNC_TOLERANCE_SEC = 0.05
+MERGED_AV_MISMATCH_ERROR_SEC = 0.08
+CONCAT_AUDIT_TARGET_SEC = 0.12  # Admin18: ~3.5 frames @ 30fps; f544 final Δ≈84ms
+CONCAT_AUDIT_CATASTROPHIC_SEC = 1.0  # Admin18: 이 이상이면 무조건 렌더 중단
 # 10초 AI 클립: 미세 줌 인크리먼트(프레임당), 최대 줌
 ZOOMPAN_AI_MICRO_INC = 0.0005
 ZOOMPAN_AI_MICRO_MAX_Z = 1.25
@@ -150,6 +163,56 @@ ZOOMPAN_AI_MICRO_MAX_Z = 1.25
 VF_CFR_IMAGE = ",format=yuv420p,fps=30,settb=AVTB"
 VF_CFR_VIDEO = ",fps=30,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p"
 CLIP_FRAMES = CLIP_DURATION_SEC * CLIP_FPS  # 90
+
+# AI 모드 동영상: zoompan/subject_box VF 생략, 베이직 crop/pad만 (모션·A/V 싱크 보존)
+# AI_VIDEO_LAYOUT_BYPASS 또는 AI_VIDEO_VF_BYPASS (동일 의미). 0/false → 레거시 AI VF.
+AI_VIDEO_LAYOUT_BYPASS_DEFAULT = True
+
+
+def _ai_video_layout_bypass_enabled() -> bool:
+    """AI 하이라이트에서 동영상 9:16만 베이직 crop/pad 적용 여부."""
+    for key in ("AI_VIDEO_LAYOUT_BYPASS", "AI_VIDEO_VF_BYPASS"):
+        raw = os.environ.get(key, "").strip().lower()
+        if raw in ("0", "false", "no", "off"):
+            return False
+        if raw in ("1", "true", "yes", "on"):
+            return True
+    return AI_VIDEO_LAYOUT_BYPASS_DEFAULT
+
+
+def _ai_video_vf_bypass_enabled() -> bool:
+    """Deprecated alias for _ai_video_layout_bypass_enabled."""
+    return _ai_video_layout_bypass_enabled()
+
+
+def _build_rule_based_video_vf(
+    rot_prefix: str,
+    is_portrait: bool,
+    file_id: str,
+    w: int,
+    h: int,
+) -> str:
+    """동영상 전용: zoompan 없이 9:16 레이아웃만 (베이직·AI bypass 공통)."""
+    if is_portrait:
+        fit_only = (
+            f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+            f"crop={CANVAS_W}:{CANVAS_H}:(iw-{CANVAS_W})/2:(ih-{CANVAS_H})/2,"
+            "setsar=1[vid]"
+        )
+        logger.info(
+            "[RENDER] rule_based video VF portrait_center_crop file=%s %sx%s",
+            file_id,
+            w,
+            h,
+        )
+        return rot_prefix + fit_only
+    logger.info(
+        "[RENDER] rule_based video VF landscape_blur_pad file=%s %sx%s",
+        file_id,
+        w,
+        h,
+    )
+    return rot_prefix + _rule_based_landscape_blur_pad_chain()
 
 
 def _score_100_from_media(mf: MediaFile) -> float:
@@ -416,6 +479,7 @@ class FlairyVideoEngine:
             self.temp_dir = temp_root / str(project_id)
         else:
             self.temp_dir = self.base_dir / "storage" / "temp" / str(project_id)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
         # 싱글 포인트: 엔진 생성 시 NVENC 런타임 체크 1회 (캐시되어 이후 인코딩에서 재사용)
         _detect_nvenc()
 
@@ -433,7 +497,7 @@ class FlairyVideoEngine:
         prefix = (
             "format=nv12,hwupload,"
             f"scale_vaapi=w={CANVAS_W}:h={CANVAS_H}:format=nv12,"
-            "hwdownload,format=nv12"
+            "hwdownload,format=yuv420p"
         )
         if stripped:
             return prefix + "," + stripped
@@ -625,12 +689,14 @@ class FlairyVideoEngine:
         preprocessed_fhd: bool = False,
         clip_frames: int = CLIP_FRAMES,
         apply_zoompan: bool = True,
+        media_kind: str = "image",
     ) -> str:
         """
         9:16(1080x1920) 캔버스용 -vf 문자열 생성.
         AI 모드: DB(media_file.width/height)만 사용, EXIF 미사용. width < height 이면 세로(Portrait).
         used_upright_file이 True일 때만 ai_analysis dimension 사용(원본 사용 시 probe+rotation).
         Rule-based: 파일 probe로 rotation 판단.
+        media_kind='video' + AI_VIDEO_VF_BYPASS: 동영상은 zoompan/subject_box 없이 rule-based video VF만.
         """
         file_id = (media_file.file_path if media_file else input_path.name) or input_path.name
         use_db_dimensions = False
@@ -673,28 +739,22 @@ class FlairyVideoEngine:
         aspect_916 = CANVAS_W / CANVAS_H
         is_portrait = (w < h)
 
+        # AI 모드 동영상 bypass: 베이직과 동일 VF (zoompan·use_ai_focus 금지)
+        if (
+            use_ai
+            and media_kind == "video"
+            and _ai_video_layout_bypass_enabled()
+        ):
+            mid = getattr(media_file, "id", None) if media_file else None
+            logger.info(
+                "[VideoBypass] use_ai=True layout=rule_based zoompan=off subject_box=ignored media_id=%s",
+                mid,
+            )
+            return _build_rule_based_video_vf(rot_prefix, is_portrait, file_id, w, h)
+
         # Rule-based video: 세로=중앙 크롭, 가로=블러 패딩(전경 전체 보존)
         if not use_ai and not apply_zoompan:
-            if is_portrait:
-                fit_only = (
-                    f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-                    f"crop={CANVAS_W}:{CANVAS_H}:(iw-{CANVAS_W})/2:(ih-{CANVAS_H})/2,"
-                    "setsar=1[vid]"
-                )
-                logger.info(
-                    "[RENDER] rule_based video VF portrait_center_crop file=%s %sx%s",
-                    file_id,
-                    w,
-                    h,
-                )
-                return rot_prefix + fit_only
-            logger.info(
-                "[RENDER] rule_based video VF landscape_blur_pad file=%s %sx%s",
-                file_id,
-                w,
-                h,
-            )
-            return rot_prefix + _rule_based_landscape_blur_pad_chain()
+            return _build_rule_based_video_vf(rot_prefix, is_portrait, file_id, w, h)
 
         # Rule-based: Pillow 전처리로 이미 1080x1920이면 zoompan만 적용
         if not use_ai and preprocessed_fhd:
@@ -738,13 +798,6 @@ class FlairyVideoEngine:
         subject_box = self._parse_subject_box(ai_analysis)
         use_ai_focus = use_ai and subject_box is not None
 
-        if abs(aspect_src - aspect_916) < 0.01:
-            simple = (
-                f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=decrease,"
-                f"pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:(oh-ih)/2[vid]"
-            )
-            return rot_prefix + simple
-
         # 세로(Portrait): width < height (DB/물리 규격 기준, EXIF 미참조)
         logger.info(
             "916_vf: file=%s wh=(%s,%s) is_portrait=%s (width<height) use_ai_focus=%s",
@@ -775,14 +828,14 @@ class FlairyVideoEngine:
                 return rot_prefix + fill_crop + "," + zoompan + "[vid]"
             return rot_prefix + fill_crop + "," + _build_zoompan_ai_fallback(clip_frames) + "[vid]"
 
-        # 가로(landscape): 블러 배경(40:20) + 밝기 감소 + 전경. AI 시 피사체 중심으로 패닝
-        blur_chain = (
-            f"split[src][dup];"
-            f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-            f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
-            f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
-        )
+        # 가로(landscape): 블러 배경 + 전경. 피사체 없으면 Admin12와 동일 스마트 패딩
         if use_ai_focus and subject_box:
+            blur_chain = (
+                f"split[src][dup];"
+                f"[dup]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                f"crop={CANVAS_W}:{CANVAS_H},boxblur={LANDSCAPE_BOXBLUR},eq=brightness=-0.2[bg];"
+                f"[src]scale={CANVAS_W}:-2:force_original_aspect_ratio=decrease[fg];"
+            )
             scale_fg = min(CANVAS_W / w, CANVAS_H / h)
             fg_w = w * scale_fg
             fg_h = h * scale_fg
@@ -795,9 +848,8 @@ class FlairyVideoEngine:
             overlay_x = max(0, min(int(CANVAS_W - fg_w), overlay_x))
             overlay_y = max(0, min(int(CANVAS_H - fg_h), overlay_y))
             blur_chain += f"[bg][fg]overlay={overlay_x}:{overlay_y}[vid]"
-        else:
-            blur_chain += f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]"
-        return rot_prefix + blur_chain
+            return rot_prefix + blur_chain
+        return rot_prefix + _rule_based_landscape_blur_pad_chain()
 
     def _get_caption(self, media_file: MediaFile, use_ai: bool) -> str:
         """자막 텍스트: use_ai면 Gemini caption/summary만 사용(파일명 노출 금지), 아니면 stem."""
@@ -888,7 +940,7 @@ class FlairyVideoEngine:
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
             vf = vf[:-5]
-            if get_accel_type() == "vaapi":
+            if get_accel_type() == "vaapi" and not use_ai:
                 vf = self._build_image_vf_for_vaapi(vf)
             if subtitle_text:
                 if use_ai:
@@ -904,6 +956,13 @@ class FlairyVideoEngine:
                 vf += "," + self._build_rule_based_title_overlay_filters(overlay_album_title)
             vf += VF_CFR_IMAGE + "[vid]"
         encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
+        vf_body = vf.rstrip()
+        if vf_body.endswith("[vid]"):
+            vf_body = vf_body[:-5]
+        dur = float(clip_duration_sec)
+        filter_complex = (
+            f"[0:v]{vf_body}[v];[1:a]{clip_audio_atrim_filter(dur)}[a]"
+        )
         cmd = [
             "ffmpeg",
             "-y",
@@ -916,19 +975,21 @@ class FlairyVideoEngine:
             "-f",
             "lavfi",
             "-i",
-            "anullsrc=channel_layout=stereo:sample_rate=44100",
-            "-vf",
-            vf,
+            clip_anullsrc_lavfi(),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
             "-t",
-            str(clip_duration_sec),
+            f"{dur:.3f}",
             "-r",
             str(CLIP_FPS),
             *encode_args,
             "-pix_fmt",
             "yuv420p",
-            "-c:a",
-            "aac",
-            "-shortest",
+            *clip_audio_encode_args(),
             str(out_path),
         ]
         logger.info("FFmpeg 실행: %s", " ".join(cmd))
@@ -949,6 +1010,7 @@ class FlairyVideoEngine:
                 )
             if not out_path.is_file():
                 raise RuntimeError(f"클립 파일이 생성되지 않음: {out_path}")
+            self._enforce_clip_av_duration(out_path, float(clip_duration_sec), use_ai)
             return out_path
         except subprocess.TimeoutExpired as e:
             logger.exception("FFmpeg 타임아웃: %s", e)
@@ -993,16 +1055,21 @@ class FlairyVideoEngine:
             src_d = 3.0
         src_d = max(0.04, float(src_d))
         slow = src_d < 2.0
-        clip_dur_out = float(clip_duration_sec)
-        sub_dur = clip_dur_out
-        zm_frames = clip_frames if clip_frames is not None else max(1, int(round(src_d * CLIP_FPS)))
+        target_out = float(clip_duration_sec)
+        sub_dur = target_out
+        if slow:
+            source_trim_d = min(src_d, max(0.04, target_out / 2.0))
+        else:
+            source_trim_d = min(src_d, target_out)
+        video_bypass = use_ai and _ai_video_layout_bypass_enabled()
 
         vf = self._build_916_vf(
             input_path,
             media_file=media_file,
             use_ai=use_ai,
-            clip_frames=zm_frames,
-            apply_zoompan=use_ai,
+            clip_frames=CLIP_FRAMES,
+            apply_zoompan=False,
+            media_kind="video",
         )
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
@@ -1019,15 +1086,15 @@ class FlairyVideoEngine:
                     vf += "," + self._build_subtitles_filter(ass_path)
             if overlay_album_title:
                 vf += "," + self._build_rule_based_title_overlay_filters(overlay_album_title)
-            vf += f",trim=start=0:duration={src_d:.3f},setpts=PTS-STARTPTS"
+            vf += f",trim=start=0:duration={source_trim_d:.3f},setpts=PTS-STARTPTS"
             if slow:
                 vf += ",setpts=2*PTS-STARTPTS"
             vf += f",fps={CLIP_FPS},settb=AVTB,format=yuv420p"
-        # 오디오: 원본 구간 → loudnorm → 2초 미만이면 0.5배속(길이 2배)
-        af = f"atrim=start=0:duration={src_d:.3f},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11"
+        # 오디오: 원본 구간 → loudnorm → 2초 미만이면 0.5배속(길이 2배) → V와 동일 목표 길이
+        af = f"atrim=start=0:duration={source_trim_d:.3f},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11"
         if slow:
             af += ",atempo=0.5"
-        af += f",atrim=start=0:duration={clip_dur_out:.3f},asetpts=PTS-STARTPTS"
+        af += f",atrim=start=0:duration={target_out:.3f},asetpts=PTS-STARTPTS"
         encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
         cmd = [
             "ffmpeg",
@@ -1043,30 +1110,36 @@ class FlairyVideoEngine:
             "-af",
             af,
             "-t",
-            f"{clip_dur_out:.3f}",
+            f"{target_out:.3f}",
             "-shortest",
             "-r",
             str(CLIP_FPS),
             *encode_args,
             "-pix_fmt",
             "yuv420p",
-            "-c:a",
-            "aac",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
+            *clip_audio_encode_args(),
             str(out_path),
         ]
         logger.info(
-            "동영상 클립 정규화 (out=%.3fs src=%.3fs slow=%s zm_frames=%d zoompan=%s): %s",
-            clip_dur_out,
+            "동영상 클립 정규화 (target=%.3fs src=%.3fs trim=%.3fs slow=%s bypass=%s zoompan=off): %s",
+            target_out,
             src_d,
+            source_trim_d,
             slow,
-            zm_frames,
-            "on" if use_ai else "off(video)",
+            video_bypass,
             " ".join(cmd),
         )
+        if use_ai:
+            logger.info(
+                "[VideoBypass] use_ai=True layout=%s zoompan=off dur=%.3fs "
+                "(clip=%d media_id=%s src=%.3fs trim=%.3fs)",
+                "rule_based" if video_bypass else "legacy_ai",
+                target_out,
+                index,
+                media_file.id,
+                src_d,
+                source_trim_d,
+            )
         result = run_ffmpeg_with_fallback(
             cmd,
             timeout_sec=300,
@@ -1080,18 +1153,12 @@ class FlairyVideoEngine:
             raise RuntimeError(f"동영상 클립 변환 실패: {result.stderr or result.stdout}")
         if not out_path.is_file():
             raise RuntimeError(f"동영상 클립이 생성되지 않음: {out_path}")
+        self._enforce_clip_av_duration(out_path, target_out, use_ai)
         return out_path
 
     def _get_clip_durations(self, clip_paths: list[Path]) -> list[float]:
-        """각 클립 길이(초) 리스트. 추출 실패 시 기본값 30fps 기준 3초로 방어."""
-        out = []
-        for p in clip_paths:
-            d = self._get_video_duration_sec(p)
-            if d is None or d <= 0:
-                logger.warning("클립 길이 추출 실패 또는 0: %s → 기본값 %.1f초 사용", p.name, CLIP_DURATION_SEC)
-                d = float(CLIP_DURATION_SEC)
-            out.append(d)
-        return out
+        """각 클립 병합 길이. format·v/a 스트림 min(_get_clip_merge_durations)."""
+        return self._get_clip_merge_durations(clip_paths)
 
     def _fade_duration_for_emotion(self, emotion: str) -> float:
         """감정에 따른 xfade duration. Joy/Excited: 짧고 빠르게(0.4), Peaceful/Sad: 부드럽고 길게(0.8)."""
@@ -1196,10 +1263,10 @@ class FlairyVideoEngine:
         if not clip_paths:
             raise ValueError("병합할 클립이 없습니다.")
         n = len(clip_paths)
-        durations = self._get_clip_durations(clip_paths)
+        durations = self._get_clip_merge_durations(clip_paths)
         if any(d <= 0 for d in durations):
             logger.warning("일부 클립 길이 0, concat으로 대체")
-            return self._merge_clips(clip_paths)
+            return self._merge_clips(clip_paths, use_ai=use_ai)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         merged_path = self.temp_dir / "merged.mp4"
         logger.info("클립 병합 중 (xfade): %d개 (1+N=%d) → %s", n, n, merged_path)
@@ -1228,24 +1295,33 @@ class FlairyVideoEngine:
                 f"[{i}:v]trim=0:{durations[i]:.3f},setpts=PTS-STARTPTS,"
                 f"format=yuv420p,fps={CLIP_FPS},settb=AVTB[v{i}]"
             )
-        offsets = []
-        s = 0.0
-        # 오프셋 누적식:
-        # offset_k = sum_{i=0..k-1}(dur_i - fade_i)
-        # 균일 길이일 때는 (clip_dur - fade_dur) * k 와 동치.
-        # Day2 기준(3.0s, 0.5s)에서는 2.5s 간격으로 전환 시작되어 프레임 오차를 줄인다.
+        # 단일 누적 타임라인: 전환 k 시작 시각 T_k = sum_{j<k}(dur_j - fade_j).
+        # xfade의 offset과 acrossfade 경계(연쇄 길이)가 동일 durations/fade를 쓰므로 영·오디오 시작 시각을 같게 둔다.
+        offsets: list[float] = []
+        cumulative_transition_start = 0.0
         for i in range(n - 1):
-            s += durations[i] - fade_durations[i]
-            offsets.append(s)
-        if beat_interval_sec and beat_interval_sec > 0:
-            snapped_offsets = [round(o / beat_interval_sec) * beat_interval_sec for o in offsets]
+            cumulative_transition_start += durations[i] - fade_durations[i]
+            offsets.append(cumulative_transition_start)
+        merged_clip_va_start = 0.0
+        for i in range(n):
             logger.info(
-                "[BeatSync] xfade offsets snap (beat=%.5fs): before=%s after=%s",
-                beat_interval_sec,
-                [round(o, 3) for o in offsets],
-                [round(o, 3) for o in snapped_offsets],
+                "[MergeTimeline] clip=%d v_start=a_start=%.3fs",
+                i,
+                merged_clip_va_start,
             )
-            offsets = snapped_offsets
+            if i < n - 1:
+                merged_clip_va_start += durations[i] - fade_durations[i]
+        for k in range(n - 1):
+            logger.info(
+                "[MergeTimeline] transition=%d xfade_duration=acrossfade_d=%.3fs",
+                k,
+                fade_durations[k],
+            )
+        if beat_interval_sec and beat_interval_sec > 0:
+            logger.debug(
+                "[BeatSync] merge uses unsnapped xfade offsets (audio=acrossfade); beat_interval=%.5fs",
+                beat_interval_sec,
+            )
         if n == 1:
             video_filter = parts[0].replace("[v0]", "[vout]")
         else:
@@ -1313,43 +1389,194 @@ class FlairyVideoEngine:
             sum_fade,
             n,
         )
+        mv_dur, ma_dur = self._probe_output_va_duration_sec(merged_path)
+        if mv_dur > 0 and ma_dur > 0 and abs(mv_dur - ma_dur) > MERGED_AV_MISMATCH_ERROR_SEC:
+            logger.error(
+                "[MergeSync] merged 출력 V/A 길이 불일치 v=%.3fs a=%.3fs Δ=%.3fs",
+                mv_dur,
+                ma_dur,
+                abs(mv_dur - ma_dur),
+            )
         self._append_log(
             f"클립 병합 완료 (출력 길이 약 {merged_d:.2f}s, 영·오디오 acrossfade/xfade 정렬)"
         )
         return merged_path
 
-    def _merge_clips(self, clip_paths: list[Path]) -> Path:
+    def _assert_clips_concat_ready(self, clip_paths: list[Path]) -> None:
+        """concat -c copy 전: 모든 클립이 V+A, 통일 AAC 48kHz, V/A 길이 정합인지 검증."""
+        for p in clip_paths:
+            prof = self._probe_clip_streams(p)
+            v = prof.get("v") or (None, 0, 0, "")
+            a = prof.get("a") or (None, 0, 0)
+            if not v[0] or v[1] <= 0:
+                raise RuntimeError(f"concat 사전검증 실패(비디오 없음): {p.name}")
+            if a[0] != CLIP_AUDIO_CODEC or int(a[1]) != CLIP_AUDIO_SAMPLE_RATE or int(a[2]) != CLIP_AUDIO_CHANNELS:
+                raise RuntimeError(
+                    f"concat 사전검증 실패(오디오 스펙 불일치): {p.name} "
+                    f"got codec={a[0]} sr={a[1]} ch={a[2]} "
+                    f"expected {CLIP_AUDIO_CODEC}/{CLIP_AUDIO_SAMPLE_RATE}/{CLIP_AUDIO_CHANNELS}"
+                )
+            v_dur, a_dur = self._probe_output_va_duration_sec(p)
+            if v_dur > 0 and a_dur > 0:
+                clip_delta = abs(v_dur - a_dur)
+                if clip_delta > CLIP_AV_SYNC_TOLERANCE_SEC:
+                    target = min(v_dur, a_dur)
+                    logger.warning(
+                        "[ConcatReady] 클립 V/A 편차 → trim: %s v=%.3fs a=%.3fs → target=%.3fs",
+                        p.name,
+                        v_dur,
+                        a_dur,
+                        target,
+                    )
+                    self._enforce_clip_av_duration(p, target, use_ai=True)
+        logger.info(
+            "[ConcatReady] %d clips OK: %s %dHz %dch",
+            len(clip_paths),
+            CLIP_AUDIO_CODEC,
+            CLIP_AUDIO_SAMPLE_RATE,
+            CLIP_AUDIO_CHANNELS,
+        )
+
+    def _audit_merged_av_duration(self, video_path: Path, label: str = "merged") -> float:
         """
-        concat 데뮤저로 클립들을 재인코딩 없이 병합. 순서: [인트로] + [본편].
+        V/A 스트림 길이 실측. Admin18: PASS(≤120ms) / FAIL(로그만) / CATASTROPHIC(≥1s 중단).
+        프로덕션: CONCAT_AUDIT_STRICT 미설정 — 미세 오차로 유저 출력 중단 없음.
+        """
+        v_dur, a_dur = self._probe_output_va_duration_sec(video_path)
+        delta = abs(v_dur - a_dur) if v_dur > 0 and a_dur > 0 else -1.0
+        self._append_log(
+            f"[ConcatAudit] {label} v={v_dur:.2f}s a={a_dur:.2f}s "
+            f"Δ={(delta if delta >= 0 else 0):.3f}s"
+        )
+        if v_dur <= 0 or a_dur <= 0:
+            logger.info(
+                "[ConcatAudit] %s %s video=%.3fs audio=%.3fs delta=%.3fs",
+                label,
+                video_path.name,
+                v_dur,
+                a_dur,
+                delta if delta >= 0 else -1.0,
+            )
+            return delta if delta >= 0 else 0.0
+
+        if delta >= CONCAT_AUDIT_CATASTROPHIC_SEC:
+            logger.error(
+                "[ConcatAudit] CATASTROPHIC %s %s V/A Δ=%.3fs >= %.3fs — 렌더 중단",
+                label,
+                video_path.name,
+                delta,
+                CONCAT_AUDIT_CATASTROPHIC_SEC,
+            )
+            raise RuntimeError(
+                f"[ConcatAudit] CATASTROPHIC V/A 불일치: {video_path.name} "
+                f"Δ={delta:.3f}s >= {CONCAT_AUDIT_CATASTROPHIC_SEC}s"
+            )
+
+        if delta <= CONCAT_AUDIT_TARGET_SEC:
+            logger.info(
+                "[ConcatAudit] PASS %s %s video=%.3fs audio=%.3fs delta=%.3fs (target<=%.3fs)",
+                label,
+                video_path.name,
+                v_dur,
+                a_dur,
+                delta,
+                CONCAT_AUDIT_TARGET_SEC,
+            )
+            return delta
+
+        logger.error(
+            "[ConcatAudit] FAIL %s %s V/A Δ=%.3fs > target %.3fs (catastrophic<%.3fs)",
+            label,
+            video_path.name,
+            delta,
+            CONCAT_AUDIT_TARGET_SEC,
+            CONCAT_AUDIT_CATASTROPHIC_SEC,
+        )
+        # 개발·CI 전용: CONCAT_AUDIT_STRICT=1 시 120ms 초과만 중단 (프로덕션 기본 off)
+        if os.environ.get("CONCAT_AUDIT_STRICT", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            raise RuntimeError(
+                f"[ConcatAudit] V/A 불일치: {video_path.name} Δ={delta:.3f}s"
+            )
+        return delta
+
+    def _merge_clips(self, clip_paths: list[Path], use_ai: bool = False) -> Path:
+        """
+        filter_complex concat으로 클립 병합(Admin17). per-clip trim 후 V/A 동시 concat·재인코딩.
+        순서: [인트로] + [본편]. demuxer -c copy 사용 안 함.
         """
         if not clip_paths:
             raise ValueError("병합할 클립이 없습니다.")
+        self._assert_clips_concat_ready(clip_paths)
+        n = len(clip_paths)
+        durations = self._get_clip_merge_durations(clip_paths)
+        if any(d <= 0 for d in durations):
+            raise RuntimeError("병합할 클립 중 길이 0인 항목이 있습니다.")
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-        concat_path = self.temp_dir / "concat.txt"
-        lines = [f"file '{p.resolve().as_posix()}'" for p in clip_paths]
-        try:
-            concat_path.write_text("\n".join(lines), encoding="utf-8")
-        except OSError as e:
-            logger.error("concat.txt 쓰기 실패: %s", e)
-            raise RuntimeError(f"concat 리스트 저장 실패: {e}") from e
         merged_path = self.temp_dir / "merged.mp4"
-        logger.info("클립 병합 중: %s개 → %s", len(clip_paths), merged_path)
-        self._append_log(f"{len(clip_paths)}개 클립 병합 중")
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_path),
-            "-c", "copy",
+        logger.info(
+            "클립 병합 중 (filter concat): %d개 → %s",
+            n,
+            merged_path,
+        )
+        self._append_log(f"{n}개 클립 filter concat 병합 중")
+
+        v_parts: list[str] = []
+        a_parts: list[str] = []
+        for i in range(n):
+            d = durations[i]
+            v_parts.append(
+                f"[{i}:v]trim=0:{d:.3f},setpts=PTS-STARTPTS,setsar=1,"
+                f"format=yuv420p,fps={CLIP_FPS},settb=AVTB[v{i}]"
+            )
+            a_parts.append(
+                f"[{i}:a]atrim=0:{d:.3f},asetpts=PTS-STARTPTS,"
+                f"aformat=sample_rates={CLIP_AUDIO_SAMPLE_RATE}:channel_layouts=stereo[a{i}]"
+            )
+        concat_in = "".join(f"[v{i}][a{i}]" for i in range(n))
+        filter_complex = (
+            ";".join(v_parts + a_parts)
+            + f";{concat_in}concat=n={n}:v=1:a=1[vout][aout]"
+        )
+        encode_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
+        filter_threads = max(1, min(4, os.cpu_count() or 4))
+        cmd = ["ffmpeg", "-y", "-filter_threads", str(filter_threads)]
+        for p in clip_paths:
+            cmd.extend(["-ignore_editlist", "1", "-i", str(p)])
+        cmd.extend([
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
+            *encode_args,
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            str(CLIP_FPS),
+            *clip_audio_encode_args(),
             str(merged_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        ])
+        result = run_ffmpeg_with_fallback(
+            cmd,
+            timeout_sec=600,
+            logger=logger,
+            conditional_hwaccel_cuda=True,
+        )
         if result.returncode != 0:
-            logger.error("FFmpeg concat stderr: %s", result.stderr)
-            raise RuntimeError(f"클립 병합 실패: {result.stderr or result.stdout}")
+            logger.error("FFmpeg filter concat stderr: %s", result.stderr)
+            raise RuntimeError(
+                f"filter concat 병합 실패: {result.stderr or result.stdout}"
+            )
         if not merged_path.is_file():
             raise RuntimeError(f"병합 파일 미생성: {merged_path}")
-        logger.info("클립 병합 완료: %s", merged_path)
-        self._append_log("클립 병합 완료")
+        self._audit_merged_av_duration(merged_path, "concat_merged")
+        logger.info("클립 병합 완료 (filter concat): %s", merged_path)
+        self._append_log("클립 filter concat 병합 완료")
         return merged_path
 
     def _make_static_clip_from_video(
@@ -1371,14 +1598,21 @@ class FlairyVideoEngine:
             r1 = subprocess.run(extract, capture_output=True, text=True, timeout=30)
             if r1.returncode != 0 or not frame_path.is_file():
                 raise RuntimeError(f"첫 프레임 추출 실패: {r1.stderr or r1.stdout}")
+            dur = max(0.04, float(duration_sec))
             vf = f"fps=30,scale={CANVAS_W}:{CANVAS_H},format=yuv420p"
+            filter_complex = (
+                f"[0:v]{vf}[v];[1:a]{clip_audio_atrim_filter(dur)}[a]"
+            )
             encode = [
                 "ffmpeg", "-y", "-loop", "1", "-i", str(frame_path),
-                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-                "-t", str(duration_sec), "-vf", vf,
+                "-f", "lavfi", "-i", clip_anullsrc_lavfi(),
+                "-filter_complex", filter_complex,
+                "-map", "[v]", "-map", "[a]",
+                "-t", f"{dur:.3f}",
                 *get_video_encoding_args(),
-                "-pix_fmt", "yuv420p", "-c:a", "aac",
-                "-shortest", str(out_path),
+                "-pix_fmt", "yuv420p",
+                *clip_audio_encode_args(),
+                str(out_path),
             ]
             r2 = run_ffmpeg_with_fallback(
                 encode,
@@ -1411,6 +1645,166 @@ class FlairyVideoEngine:
         except (ValueError, subprocess.TimeoutExpired) as e:
             logger.debug("duration 추출 예외 %s: %s", video_path.name, e)
             return 0.0
+
+    def _probe_stream_duration_sec(self, video_path: Path, stream_spec: str) -> float:
+        """
+        ffprobe로 단일 스트림(v:0 / a:0) 재생 길이(초). duration 미기재 코덱은 nb_frames/r_frame_rate로 추정.
+        스트림 없음 또는 실패 시 0.0.
+        """
+        try:
+            cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                stream_spec,
+                "-show_entries",
+                "stream=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and result.stdout.strip():
+                raw = result.stdout.strip().split("\n")[0].strip()
+                if raw and raw != "N/A":
+                    return float(raw)
+            if stream_spec.startswith("v"):
+                cmd2 = [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    stream_spec,
+                    "-show_entries",
+                    "stream=nb_frames,r_frame_rate",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(video_path),
+                ]
+                r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=10)
+                if r2.returncode != 0 or not r2.stdout.strip():
+                    return 0.0
+                lines = [ln.strip() for ln in r2.stdout.strip().split("\n") if ln.strip()]
+                if len(lines) >= 2:
+                    try:
+                        nb = float(lines[0])
+                        rate = lines[1]
+                        if "/" in rate:
+                            num, den = rate.split("/", 1)
+                            fps = float(num) / float(den) if float(den) != 0 else 0.0
+                        else:
+                            fps = float(rate)
+                        if fps > 0 and nb > 0:
+                            return nb / fps
+                    except (ValueError, ZeroDivisionError):
+                        pass
+            return 0.0
+        except (ValueError, subprocess.TimeoutExpired, IndexError) as e:
+            logger.debug("stream duration 추출 실패 %s %s: %s", video_path.name, stream_spec, e)
+            return 0.0
+
+    def _get_clip_merge_durations(self, clip_paths: list[Path]) -> list[float]:
+        """
+        병합용 클립 길이: format·비디오·오디오 스트림 중 양수 값만 모아 min.
+        한쪽만 길면 짧은 쪽에 맞춰 xfade/acrossfade 트림 길이를 통일해 누적 싱크 드리프트를 줄인다.
+        """
+        out: list[float] = []
+        for p in clip_paths:
+            fmt_d = self._get_video_duration_sec(p)
+            v_d = self._probe_stream_duration_sec(p, "v:0")
+            a_d = self._probe_stream_duration_sec(p, "a:0")
+            candidates = [x for x in (fmt_d, v_d, a_d) if x and x > 0]
+            if not candidates:
+                logger.warning(
+                    "클립 길이 추출 실패 → 기본값 %.1f초: %s",
+                    CLIP_DURATION_SEC,
+                    p.name,
+                )
+                out.append(float(CLIP_DURATION_SEC))
+                continue
+            d = min(candidates)
+            if len(candidates) > 1 and max(candidates) - min(candidates) > 0.05:
+                logger.info(
+                    "[MergeDur] %s fmt=%.3f v=%.3f a=%.3f → trim=%.3f",
+                    p.name,
+                    fmt_d,
+                    v_d,
+                    a_d,
+                    d,
+                )
+            out.append(d)
+        return out
+
+    def _probe_output_va_duration_sec(self, video_path: Path) -> tuple[float, float]:
+        """인코딩된 파일의 비디오·오디오 스트림 길이(초). 없으면 해당 쪽 0."""
+        v = self._probe_stream_duration_sec(video_path, "v:0")
+        a = self._probe_stream_duration_sec(video_path, "a:0")
+        return (v, a)
+
+    def _enforce_clip_av_duration(self, out_path: Path, target_sec: float, use_ai: bool) -> None:
+        """
+        동영상 클립 인코딩 직후 v/a/target 길이 편차가 크면 trim으로 목표 길이에 맞춘다.
+        AAC/프레임 양자화로 수 ms 차이는 남을 수 있음.
+        """
+        if target_sec <= 0.04:
+            return
+        v_dur, a_dur = self._probe_output_va_duration_sec(out_path)
+        if v_dur <= 0:
+            return
+        mismatch_va = a_dur > 0 and abs(v_dur - a_dur) > CLIP_AV_SYNC_TOLERANCE_SEC
+        mismatch_vt = abs(v_dur - target_sec) > CLIP_AV_SYNC_TOLERANCE_SEC
+        mismatch_at = a_dur > 0 and abs(a_dur - target_sec) > CLIP_AV_SYNC_TOLERANCE_SEC
+        if not (mismatch_va or mismatch_vt or mismatch_at):
+            return
+        logger.warning(
+            "[ClipSync] v/a/target 편차 → trim 재인코딩: %s v=%.3f a=%.3f target=%.3f",
+            out_path.name,
+            v_dur,
+            a_dur,
+            target_sec,
+        )
+        tmp = out_path.with_suffix(".avsync.mp4")
+        ts = f"{target_sec:.6f}"
+        fc = (
+            f"[0:v]trim=0:{ts},setpts=PTS-STARTPTS,fps={CLIP_FPS},format=yuv420p[v];"
+            f"[0:a]atrim=0:{ts},asetpts=PTS-STARTPTS[a]"
+        )
+        enc_args = get_video_encoding_args() if use_ai else get_rule_based_video_encoding_args()
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(out_path),
+            "-filter_complex",
+            fc,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            *enc_args,
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            str(CLIP_FPS),
+            *clip_audio_encode_args(),
+            str(tmp),
+        ]
+        result = run_ffmpeg_with_fallback(
+            cmd,
+            timeout_sec=180,
+            logger=logger,
+            conditional_hwaccel_cuda=False,
+        )
+        if result.returncode == 0 and tmp.is_file():
+            tmp.replace(out_path)
+            logger.info("[ClipSync] 재정렬 완료: %s", out_path.name)
+        else:
+            logger.error(
+                "[ClipSync] 재정렬 실패(exit=%s): %s",
+                result.returncode,
+                (result.stderr or result.stdout or "")[:400],
+            )
 
     def _accumulate_timeline_segments(
         self,
@@ -1668,22 +2062,35 @@ class FlairyVideoEngine:
         narr_duck_ratio = float(os.environ.get("NARR_DUCK_RATIO", "4"))
         narr_duck_ratio = max(1.0, min(20.0, narr_duck_ratio))
 
+        # BGM은 파일 한 바퀴보다 영상이 길 때 반복되어야 함. -stream_loop만으로는 amix에서
+        # 첫 입력 길이(duration=first)로 잘리는 경우가 있어, aloop+atrim으로 영상 길이만큼 확장.
+        _bgm_aloop_sz = int(os.environ.get("FLAIRY_BGM_ALOOP_BUFFER_SAMPLES", "2000000000"))
+        _bgm_aloop_sz = max(65536, min(_bgm_aloop_sz, 2147483647))
+        d_trim = max(float(duration), 0.01)
+        sr = CLIP_AUDIO_SAMPLE_RATE
+        bgm_loop_trim = (
+            f"[1:a]aloop=loop=-1:size={_bgm_aloop_sz},atrim=0:{d_trim:.6f},asetpts=PTS-STARTPTS,"
+            f"aresample={sr}[bgm_rs];"
+            f"[bgm_rs]volume=0.9[bgm_in]"
+        )
+        nav_rs = f"[0:a]aresample={sr},asetpts=PTS-STARTPTS[nav_rs]"
+
         if narr_path is not None:
             filter_complex = (
-                "[1:a]volume=0.9[bgm_in];"
-                "[0:a]volume=1.0[nav_in];"
-                "[2:a]volume=1.0[narr_in];"
+                f"{bgm_loop_trim};"
+                f"{nav_rs};"
+                f"[2:a]aresample={sr},asetpts=PTS-STARTPTS[narr_rs];"
+                "[nav_rs]volume=1.0[nav_in];"
+                "[narr_rs]volume=1.0[narr_in];"
                 f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_d1];"
                 f"[bgm_d1][narr_in]sidechaincompress=threshold={narr_duck_threshold}:ratio={narr_duck_ratio}:attack=12:release=220[bgm_d2];"
-                "[bgm_d2][nav_in][narr_in]amix=inputs=3:duration=longest:normalize=0[audio_out]"
+                "[bgm_d2][nav_in][narr_in]amix=inputs=3:duration=shortest:normalize=0[audio_out]"
             )
             inputs = [
                 "ffmpeg",
                 "-y",
                 "-i",
                 str(video_path),
-                "-stream_loop",
-                "-1",
                 "-i",
                 str(bgm_path),
                 "-i",
@@ -1691,18 +2098,17 @@ class FlairyVideoEngine:
             ]
         else:
             filter_complex = (
-                "[1:a]volume=0.9[bgm_in];"
-                "[0:a]volume=1.0[nav_in];"
+                f"{bgm_loop_trim};"
+                f"{nav_rs};"
+                "[nav_rs]volume=1.0[nav_in];"
                 f"[bgm_in][nav_in]sidechaincompress=threshold={duck_threshold}:ratio=20:attack=10:release=180[bgm_ducked];"
-                "[bgm_ducked][nav_in]amix=inputs=2:duration=first:normalize=0[audio_out]"
+                "[bgm_ducked][nav_in]amix=inputs=2:duration=shortest:normalize=0[audio_out]"
             )
             inputs = [
                 "ffmpeg",
                 "-y",
                 "-i",
                 str(video_path),
-                "-stream_loop",
-                "-1",
                 "-i",
                 str(bgm_path),
             ]
@@ -1731,16 +2137,14 @@ class FlairyVideoEngine:
             "artist=Flairy v4.0",
             "-c:v",
             "copy",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
+            *clip_audio_encode_args(),
             str(out_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             logger.error("FFmpeg BGM stderr: %s", result.stderr)
             raise RuntimeError(f"BGM 합성 실패: {result.stderr or result.stdout}")
+        self._audit_merged_av_duration(out_path, "final_output")
         final_duration = self._get_video_duration_sec(out_path)
         logger.info(
             "타임라인 검증: merged=%.3fs final=%.3fs delta=%.3fs",
@@ -2178,15 +2582,11 @@ class FlairyVideoEngine:
         # 병합: [인트로] + [본편 N] + [아웃로(있으면)].
         logger.info("FFmpeg 병합 대상 클립 수: %d (1+%d%s)", len(clips), len(main_media_list), "+1(아웃로)" if outro_added else "")
         t_merge_start = time.perf_counter()
+        merged: Path | None = None
         if len(clips) >= 2 and merge_mode == MERGE_MODE_CONCAT:
-            if self._can_concat_copy(clips):
-                merged = self._merge_clips(clips)
-            else:
-                logger.warning("MERGE_MODE concat 비호환 -> xfade fallback")
-                self._append_log("MERGE_MODE=concat 비호환, xfade로 fallback")
-                merge_mode = MERGE_MODE_XFADE
+            merged = self._merge_clips(clips, use_ai=use_ai)
 
-        if len(clips) >= 2 and use_ai and merge_mode == MERGE_MODE_XFADE:
+        if merged is None and len(clips) >= 2 and use_ai and merge_mode == MERGE_MODE_XFADE:
             emotions_per_clip = (
                 [""] * (1 if has_intro else 0)
                 + [(mf.ai_analysis or {}).get("emotion", "") or "" for mf in main_media_list]
@@ -2200,7 +2600,7 @@ class FlairyVideoEngine:
                 beat_interval_sec=beat_interval_sec,
                 override_fade_duration=beat_fade_duration_sec,
             )
-        elif len(clips) >= 2 and merge_mode == MERGE_MODE_XFADE:
+        elif merged is None and len(clips) >= 2 and merge_mode == MERGE_MODE_XFADE:
             merged = self._merge_clips_with_xfade(
                 clips,
                 fade_duration=beat_fade_duration_sec,
@@ -2208,14 +2608,15 @@ class FlairyVideoEngine:
                 beat_interval_sec=beat_interval_sec,
                 override_fade_duration=beat_fade_duration_sec,
             )
-        else:
-            merged = self._merge_clips(clips)
+        elif merged is None:
+            merged = self._merge_clips(clips, use_ai=use_ai)
         logger.info("STAGE_MERGE elapsed=%.3fs", time.perf_counter() - t_merge_start)
         # Phase 4: 자막은 클립별 영문 감성(english_caption)만 사용, 전체의 약 45% 클립에만 노출.
         # 기존 한글 전체 오버레이(_apply_cinematic_overlay) 제거됨 → 병합본 그대로 사용.
         overlay_path = merged
         if not overlay_path.is_file():
             raise FileNotFoundError(f"BGM 입력 영상 없음: {overlay_path}. 병합/오버레이 단계 확인 필요.")
+        self._audit_merged_av_duration(overlay_path, "pre_bgm")
         self._write_render_timeline_json(clip_timeline, beat_fade_duration_sec)
         t_audio_start = time.perf_counter()
         final_path = self._add_bgm(

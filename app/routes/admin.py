@@ -2,6 +2,7 @@ import math
 import json
 import os
 import re
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -40,6 +41,50 @@ _STATS_CACHE_TTL_SEC = 60
 _stats_cache: dict[str, tuple[float, dict]] = {}
 
 _TASK_PENDING_STATUSES = {"PENDING", "ANALYZING", "GENERATING", "COMPOSING"}
+
+
+def _terminate_ffmpeg_for_project(project_id) -> int:
+    """cmdline에 project UUID가 포함된 ffmpeg에 SIGTERM. 베스트 에포트."""
+    pid_str = str(project_id)
+    n_sent = 0
+    if psutil is not None:
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                cmd = proc.cmdline()
+                if not cmd:
+                    continue
+                line = " ".join(cmd)
+                if pid_str not in line or "ffmpeg" not in line.lower():
+                    continue
+                proc.send_signal(signal.SIGTERM)
+                n_sent += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return n_sent
+    try:
+        import subprocess as sp
+
+        r = sp.run(["pgrep", "-af", "ffmpeg"], capture_output=True, text=True, timeout=5)
+        if r.returncode != 0 or not (r.stdout or "").strip():
+            return 0
+        for ln in (r.stdout or "").strip().splitlines():
+            parts = ln.strip().split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            if pid_str not in parts[1]:
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                n_sent += 1
+            except ProcessLookupError:
+                pass
+        return n_sent
+    except Exception:
+        return 0
 
 
 class NoticeCreateBody(BaseModel):
@@ -876,6 +921,69 @@ def admin_retry_task(
 
     background_tasks.add_task(_run_generate_task, str(row["project_id"]))
     return {"ok": True, "task_id": task_id, "project_id": str(row["project_id"])}
+
+
+@router.post("/api/admin/tasks/{task_id}/terminate")
+def admin_terminate_task(
+    request: Request,
+    task_id: str,
+    admin_payload: dict = Depends(require_admin_api),
+    db: Session = Depends(get_db),
+):
+    """진행 중 작업을 FAILED로 표시하고, 해당 프로젝트 경로가 실린 ffmpeg에 SIGTERM."""
+    row = db.execute(
+        text("""
+        SELECT task_id, project_id, status FROM video_tasks WHERE task_id::text = :tid
+        """),
+        {"tid": task_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    project_uuid = row["project_id"]
+    if not project_uuid:
+        raise HTTPException(status_code=400, detail="Task has no project")
+    st = (row["status"] or "").upper()
+    if st in ("COMPLETED", "FAILED"):
+        raise HTTPException(status_code=409, detail="Task already finished")
+    killed = _terminate_ffmpeg_for_project(project_uuid)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    log_line = f"[{ts}] 관리자 강제 종료 (ffmpeg SIGTERM 시도 {killed}건)\n"
+    db.execute(
+        text("""
+        UPDATE projects SET status = 'FAILED',
+          logs = COALESCE(logs, '') || :line
+        WHERE id = :pid
+        """),
+        {"pid": project_uuid, "line": log_line},
+    )
+    db.execute(
+        text("""
+        UPDATE video_tasks SET status = 'FAILED',
+          current_msg = :msg,
+          updated_at = now(),
+          error_log = COALESCE(error_log, '') || :elog
+        WHERE task_id::text = :tid
+        """),
+        {
+            "tid": task_id,
+            "msg": "관리자에 의해 중단되었습니다.",
+            "elog": "[admin terminate]\n",
+        },
+    )
+    _log_admin_action(
+        db,
+        admin_payload=admin_payload,
+        request=request,
+        action_type="TERMINATE_TASK",
+        target_id=task_id,
+        details={
+            "project_id": str(project_uuid),
+            "ffmpeg_sigterm_attempts": killed,
+            "before_status": st,
+        },
+    )
+    db.commit()
+    return {"ok": True, "task_id": task_id, "ffmpeg_sigterm_sent": killed}
 
 
 @router.delete("/api/admin/tasks/{task_id}")
