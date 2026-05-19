@@ -217,3 +217,21 @@ AI 하이라이트 **concat 병합 경로** (`HIGHLIGHT_MERGE_MODE=concat`):
 3. `[ConcatAudit]` — Δ≤**120ms** PASS, Δ≥**1s** 렌더 중단
 
 **성과:** 18.4초 싱크 균열 → **84ms (2.5프레임)** — 하이브리드 filter concat 엔진 프로덕션 확정. 본 포렌식 트랙 **마감**.
+
+---
+
+## 13. 사례 `7c43a111` — 구 파이프라인 미재시작 (2026-05-19)
+
+**증상:** [뷰어](http://121.133.47.203:8000/viewer/video/7c43a111-f37a-4fa4-9fd0-f95299c06004) ~1:35(95s) — 동영상 오디오만, 화면은 다른 이미지; 이후 동영상 미표시처럼 보임.
+
+**원인:** `git pull`(Admin 17) 후 **gunicorn 미재시작** → demuxer `concat -c copy`로 렌더. ffprobe **V=164.67s / A=146.22s (Δ=18.45s)**. `render_timeline.json`상 95s는 **video media_id=1992** 구간 — V/A 누적 어긋남으로 화면·소리 불일치.
+
+**조치:** `systemctl restart flairy_v4` + `rerender_project.py 7c43a111-...`
+
+| | V | A | Δ |
+|--|---|---|---|
+| 조치 전 | 164.67s | 146.22s | **18.45s** |
+| filter concat 재렌더 후 | 145.37s | 145.45s | **0.084s** |
+
+- 로그: `filter concat 병합 중`, `[ConcatAudit] PASS` ×3
+- 배포 가드: [`scripts/deploy_restart.sh`](../scripts/deploy_restart.sh)

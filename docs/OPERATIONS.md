@@ -52,4 +52,17 @@ pgrep -afc ffmpeg || true
 
 ---
 
+## 코드 배포 후 재시작 (필수)
+
+Python 모듈(`video_engine` 등)은 **gunicorn 워커 재시작 전까지 메모리에 구버전이 남습니다.** `git pull`만으로는 렌더 파이프라인이 갱신되지 않을 수 있습니다.
+
+```bash
+./scripts/deploy_restart.sh
+# 또는: git pull && sudo systemctl restart flairy_v4.service
+```
+
+배포 후 로그에서 `filter concat 병합 중`, `[ConcatAudit] PASS` 문구로 Admin 17+ 병합 경로 적용 여부를 확인하세요.
+
+---
+
 운영 환경변수 요약은 루트 [README.md](../README.md)의 **운영·성능 튜닝** 절을 참고하세요.
