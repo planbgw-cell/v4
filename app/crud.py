@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, TypedDict, Union
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import MediaFile, Project, ProjectMode, User, VideoTask
@@ -82,6 +83,49 @@ def get_projects_by_user_id(db: Session, user_id: UUID) -> list[Project]:
         .filter(Project.user_id == user_id)
         .order_by(Project.created_at.desc())
         .all()
+    )
+
+
+def count_projects_for_owner(
+    db: Session,
+    *,
+    user_id: UUID | None = None,
+    guest_token: str | None = None,
+) -> int:
+    """
+    베타 쿼터용 프로젝트 수.
+    회원: projects.user_id 또는 video_tasks.user_id로 연결된 distinct project.
+    비회원: video_tasks.guest_token 기준 distinct project_id.
+    """
+    if user_id is not None:
+        owned_ids = {
+            row[0]
+            for row in db.query(Project.id).filter(Project.user_id == user_id).all()
+        }
+        task_project_ids = {
+            row[0]
+            for row in db.query(VideoTask.project_id)
+            .filter(
+                VideoTask.user_id == user_id,
+                VideoTask.project_id.isnot(None),
+            )
+            .distinct()
+            .all()
+            if row[0] is not None
+        }
+        return len(owned_ids | task_project_ids)
+
+    token = (guest_token or "").strip()
+    if not token:
+        return 0
+    return int(
+        db.query(func.count(func.distinct(VideoTask.project_id)))
+        .filter(
+            VideoTask.guest_token == token,
+            VideoTask.project_id.isnot(None),
+        )
+        .scalar()
+        or 0
     )
 
 

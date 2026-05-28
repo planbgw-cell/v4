@@ -135,11 +135,13 @@
     </button>
   </div>
 
-  <!-- Debug mode -->
+  {% if is_admin %}
+  <!-- Debug mode (admin only) -->
   <label class="flex items-center gap-2 text-sm text-gray-600">
     <input type="checkbox" id="debugMode" class="rounded border-gray-300" />
     디버그 모드
   </label>
+  {% endif %}
 </div>
 {% set current_url = request.url.path %}
 {% include "partials/auth_modal.html" %}
@@ -703,6 +705,27 @@
       if (xhr.readyState !== 4) return;
       if (typeof restoreButtonsText === "function") restoreButtonsText();
 
+      if (xhr.status === 403) {
+        let quotaMessage = '베타서비스 기간에는 1인당 최대 5개까지만 하이라이트 영상 생성이 가능합니다.';
+        try {
+          const body = JSON.parse(xhr.responseText || '{}');
+          if (body && body.detail) {
+            quotaMessage = typeof body.detail === 'string'
+              ? body.detail
+              : (Array.isArray(body.detail) && body.detail[0] && body.detail[0].msg)
+                ? body.detail[0].msg
+                : quotaMessage;
+          }
+        } catch (e) {
+          // ignore
+        }
+        alert(quotaMessage);
+        if (btnGenVideo) btnGenVideo.disabled = false;
+        if (btnGenAlbum) btnGenAlbum.disabled = false;
+        if (typeof restoreButtonsText === 'function') restoreButtonsText();
+        return;
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         let data;
         try {
@@ -727,7 +750,8 @@
         if (data.task_id && window.FlairyWES && typeof window.FlairyWES.saveActiveTask === 'function') {
           window.FlairyWES.saveActiveTask(data.task_id);
         }
-        const debugMode = document.getElementById('debugMode').checked;
+        const debugEl = document.getElementById('debugMode');
+        const debugMode = !!(debugEl && debugEl.checked);
         const params = new URLSearchParams();
         if (debugMode) params.set('debug', '1');
         if (fastModeConcat && fastModeConcat.checked) params.set('fast', '1');

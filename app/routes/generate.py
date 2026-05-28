@@ -11,9 +11,10 @@ import uuid
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import text
 
+from app.auth.dependencies import get_current_user_optional
 from app.crud import (
     get_latest_video_task_by_project,
     get_project,
@@ -38,6 +39,11 @@ from app.utils.ffmpeg_accel import get_accel_type
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["generate"])
 ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _is_debug_admin_email(email: str | None) -> bool:
+    e = (email or "").strip().lower()
+    return e == "admin@flairy.kr"
 
 
 def _mode_value(project) -> str:
@@ -479,6 +485,8 @@ async def api_generate(
     project_id: str,
     background_tasks: BackgroundTasks,
     merge_mode: str | None = None,
+    debug_mode: bool = False,
+    current_user=Depends(get_current_user_optional),
 ):
     """
     하이라이트 영상 생성 요청. AI 모드면 ai_analysis가 모두 채워진 뒤에만 렌더링 단계로 진입.
@@ -487,6 +495,12 @@ async def api_generate(
         uid = UUID(project_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Invalid project_id")
+    if debug_mode and not _is_debug_admin_email(getattr(current_user, "email", None)):
+        logger.warning(
+            "Unauthorized debug mode attempt by user: %s",
+            getattr(current_user, "email", "Anonymous") if current_user else "Anonymous",
+        )
+        debug_mode = False
     db = SessionLocal()
     try:
         project = get_project(db, uid)

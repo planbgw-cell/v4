@@ -7,18 +7,18 @@ import json
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user_optional
-from app.crud import create_project, create_video_task
+from app.config import get_beta_max_project_quota, get_highlight_merge_mode
+from app.crud import count_projects_for_owner, create_project, create_video_task
 from app.database import SessionLocal
 from app.models import MediaFile, ProjectMode
 from app.services.video_service import run_ai_analysis
 from app.services.web_video_compat import VideoTranscodeError, ensure_web_compatible_video
-from app.config import get_highlight_merge_mode
 from app.utils.ffmpeg_accel import get_accel_type
 
 router = APIRouter(prefix="/api", tags=["upload"])
@@ -32,6 +32,15 @@ MIN_UPLOAD_FILES = 5
 MAX_TOTAL = 30
 MAX_VIDEO_COUNT = 5
 MAX_VIDEO_BYTES = 150 * 1024 * 1024  # 150MB (Bytes)
+GUEST_COOKIE_KEY = "flairy_guest_token"
+GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1년
+
+
+def _beta_quota_message() -> str:
+    return (
+        f"베타서비스 기간에는 1인당 최대 {get_beta_max_project_quota()}개까지만 "
+        "하이라이트 영상 생성이 가능합니다."
+    )
 
 
 def _is_video(content_type: str) -> bool:
@@ -151,6 +160,7 @@ def _transcode_video_in_background(media_file_id: int, raw_abs_path: str) -> Non
 
 @router.post("/upload")
 async def api_upload(
+    request: Request,
     background_tasks: BackgroundTasks,
     title: str = Form(..., max_length=255),
     mode: str = Form(...),
@@ -159,6 +169,20 @@ async def api_upload(
     current_user=Depends(get_current_user_optional),
 ):
     """프로젝트 생성 후 파일 저장/DB 기록 후 202로 즉시 반환. 비디오는 백그라운드 트랜스코딩."""
+    quota_limit = get_beta_max_project_quota()
+    guest_token = (request.cookies.get(GUEST_COOKIE_KEY) or "").strip() or uuid.uuid4().hex
+
+    db_quota: Session = SessionLocal()
+    try:
+        if current_user is not None:
+            project_count = count_projects_for_owner(db_quota, user_id=current_user.id)
+        else:
+            project_count = count_projects_for_owner(db_quota, guest_token=guest_token)
+        if project_count >= quota_limit:
+            raise HTTPException(status_code=403, detail=_beta_quota_message())
+    finally:
+        db_quota.close()
+
     if len(files) < MIN_UPLOAD_FILES:
         raise HTTPException(
             status_code=400,
@@ -174,7 +198,6 @@ async def api_upload(
         project_type = "video"
 
     db: Session = SessionLocal()
-    guest_token = uuid.uuid4().hex
     task_type = (
         "ALBUM_AI"
         if project_type == "album"
@@ -186,6 +209,10 @@ async def api_upload(
         project = create_project(
             db, title=title, mode=project_mode, status="PENDING", project_type=project_type
         )
+        if current_user is not None:
+            project.user_id = current_user.id
+            db.commit()
+            db.refresh(project)
         project_id = project.id
         task = create_video_task(
             db,
@@ -278,7 +305,7 @@ async def api_upload(
     for media_file_id, abs_path in pending_video_jobs:
         background_tasks.add_task(_transcode_video_in_background, media_file_id, abs_path)
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=202,
         content={
             "project_id": str(project_id),
@@ -289,6 +316,16 @@ async def api_upload(
             "pending_file_ids": [media_file_id for media_file_id, _ in pending_video_jobs],
         },
     )
+    if current_user is None:
+        response.set_cookie(
+            key=GUEST_COOKIE_KEY,
+            value=guest_token,
+            max_age=GUEST_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+    return response
 
 
 @router.get("/upload/status/{file_id}")

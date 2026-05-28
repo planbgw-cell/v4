@@ -39,3 +39,10 @@ def get_flairy_temp_dir() -> Path | None:
         return None
     return Path(raw).expanduser()
 
+
+def get_beta_max_project_quota() -> int:
+    try:
+        return max(1, int(os.getenv("BETA_MAX_PROJECT_QUOTA", "5")))
+    except ValueError:
+        return 5
+

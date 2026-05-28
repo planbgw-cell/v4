@@ -192,10 +192,16 @@ async def auth_logout():
     return response
 
 
+def _is_debug_admin_email(email: str | None) -> bool:
+    e = (email or "").strip().lower()
+    return e == "admin@flairy.kr"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, current_user=Depends(get_current_user_optional)):
+    is_admin = bool(current_user and _is_debug_admin_email(getattr(current_user, "email", None)))
     return templates.TemplateResponse(
-        "index.html", {"request": request, "current_user": current_user}
+        "index.html", {"request": request, "current_user": current_user, "is_admin": is_admin}
     )
 
 
