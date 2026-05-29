@@ -20,6 +20,7 @@ try:
 except Exception:  # pragma: no cover
     psutil = None
 
+from app.auth.cookie_utils import clear_admin_token_cookie, set_admin_token_cookie
 from app.core.auth_admin import (
     ADMIN_COOKIE_KEY,
     ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -385,7 +386,7 @@ async def admin_audit_page(
 @router.get("/admin/logout")
 async def admin_logout():
     r = RedirectResponse(url="/admin/login", status_code=302)
-    r.delete_cookie(ADMIN_COOKIE_KEY, path="/")
+    clear_admin_token_cookie(r)
     return r
 
 
@@ -424,15 +425,7 @@ async def admin_login(
 
     token = create_admin_access_token(admin["id"], admin.get("role", "super_admin"))
     response = RedirectResponse(url="/admin/stats", status_code=302)
-    response.set_cookie(
-        key=ADMIN_COOKIE_KEY,
-        value=token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=86400,
-        path="/",
-    )
+    set_admin_token_cookie(response, token, max_age=86400)
     return response
 
 

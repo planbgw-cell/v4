@@ -46,3 +46,27 @@ def get_beta_max_project_quota() -> int:
     except ValueError:
         return 5
 
+
+def get_public_base_url() -> str:
+    """외부 공유·매직 링크·알림에 쓰는 공개 사이트 URL (scheme+host, trailing slash 없음)."""
+    raw = (os.getenv("PUBLIC_BASE_URL") or os.getenv("SITE_URL") or "https://flairy.kr").strip()
+    return raw.rstrip("/")
+
+
+def get_cookie_domain() -> str | None:
+    """
+    세션 쿠키 Domain (apex·www 공유).
+    localhost/127.0.0.1/빈 값이면 None → 호스트 전용 쿠키(로컬 개발).
+    """
+    raw = (os.getenv("COOKIE_DOMAIN") or "flairy.kr").strip().lstrip(".")
+    if not raw:
+        return None
+    lower = raw.lower()
+    if lower in ("localhost", "127.0.0.1") or lower.endswith(".localhost"):
+        return None
+    return raw
+
+
+def get_cookie_secure() -> bool:
+    return os.getenv("COOKIE_SECURE", "false").strip().lower() in ("true", "1", "yes")
+

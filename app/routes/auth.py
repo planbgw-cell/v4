@@ -5,7 +5,6 @@
 import base64
 import json
 import logging
-import os
 import secrets
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -35,6 +34,7 @@ from app.auth.security import (
     hash_password,
     verify_password,
 )
+from app.auth.cookie_utils import clear_access_token_cookie, set_access_token_cookie
 from app.auth.dependencies import get_current_user
 from app.crud import create_user, get_user_by_email
 from app.database import get_db
@@ -43,7 +43,6 @@ from app.models import User
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-COOKIE_KEY = "access_token"
 COOKIE_MAX_AGE = ACCESS_TOKEN_EXPIRE_MINUTES * 60
 
 
@@ -90,14 +89,7 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
     _touch_last_login(db, user)
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     response = JSONResponse(content={"message": "로그인 성공", "user_id": str(user.id), "email": user.email})
-    response.set_cookie(
-        key=COOKIE_KEY,
-        value=token,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
-    )
+    set_access_token_cookie(response, token, COOKIE_MAX_AGE)
     return response
 
 
@@ -109,17 +101,9 @@ def me(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout")
 def logout():
-    """access_token 쿠키 삭제. 인증 불필요. set_cookie(max_age=0)로 로그인 시와 동일한 옵션 사용해 확실히 제거."""
+    """access_token 쿠키 삭제. 인증 불필요. set/delete 옵션은 cookie_utils와 동일."""
     response = JSONResponse(content={"message": "로그아웃되었습니다."})
-    response.set_cookie(
-        key=COOKIE_KEY,
-        value="",
-        max_age=0,
-        path="/",
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
-    )
+    clear_access_token_cookie(response)
     return response
 
 
@@ -190,14 +174,7 @@ async def google_callback(
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     next_path = _parse_state(state)
     response = RedirectResponse(url=next_path, status_code=302)
-    response.set_cookie(
-        key=COOKIE_KEY,
-        value=token,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
-    )
+    set_access_token_cookie(response, token, COOKIE_MAX_AGE)
     return response
 
 
@@ -207,9 +184,7 @@ async def kakao_login(next_path: str | None = Query(None, alias="next")):
     if not kakao_oauth_configured():
         raise HTTPException(status_code=503, detail="Kakao OAuth not configured")
     state = _build_state(next_path)
-    # Kakao 콘솔 설정 필요:
-    # - 제품 설정 > 카카오 로그인 > 활성화 ON
-    # - Redirect URI: http://121.133.47.184:8000/api/auth/kakao/callback
+    # Kakao 콘솔: REST API 키 > 리다이렉트 URI = https://flairy.kr/api/auth/kakao/callback
     params = {
         "response_type": "code",
         "client_id": get_kakao_client_id(),
@@ -249,12 +224,5 @@ async def kakao_callback(
     token = create_access_token(user.id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     next_path = _parse_state(state)
     response = RedirectResponse(url=next_path, status_code=302)
-    response.set_cookie(
-        key=COOKIE_KEY,
-        value=token,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1"),
-    )
+    set_access_token_cookie(response, token, COOKIE_MAX_AGE)
     return response

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.auth.cookie_utils import GUEST_COOKIE_KEY, set_guest_token_cookie
 from app.auth.dependencies import get_current_user_optional
 from app.config import get_beta_max_project_quota, get_highlight_merge_mode
 from app.crud import count_projects_for_owner, create_project, create_video_task
@@ -32,7 +33,6 @@ MIN_UPLOAD_FILES = 5
 MAX_TOTAL = 30
 MAX_VIDEO_COUNT = 5
 MAX_VIDEO_BYTES = 150 * 1024 * 1024  # 150MB (Bytes)
-GUEST_COOKIE_KEY = "flairy_guest_token"
 GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1년
 
 
@@ -317,14 +317,7 @@ async def api_upload(
         },
     )
     if current_user is None:
-        response.set_cookie(
-            key=GUEST_COOKIE_KEY,
-            value=guest_token,
-            max_age=GUEST_COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
+        set_guest_token_cookie(response, guest_token, GUEST_COOKIE_MAX_AGE)
     return response
 
 

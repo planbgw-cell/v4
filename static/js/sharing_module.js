@@ -1,14 +1,23 @@
 (function (window, document) {
-  // Kakao Web 플랫폼 등록 도메인과 동일한 기본값(필요 시 init({siteDomain})로 덮어쓰기).
-  var SITE_DOMAIN = "http://121.133.47.184:8000";
+  // Kakao Web 플랫폼 등록 도메인과 동일 (필요 시 init({siteDomain})로 덮어쓰기).
+  var SITE_DOMAIN_FALLBACK = "https://flairy.kr";
 
   function getOrigin() {
     return window.location.origin;
   }
 
+  function getConfiguredSiteDomain() {
+    if (typeof window.FLAIRY_PUBLIC_ORIGIN === "string" && window.FLAIRY_PUBLIC_ORIGIN.trim()) {
+      return window.FLAIRY_PUBLIC_ORIGIN.trim().replace(/\/+$/, "");
+    }
+    var meta = document.querySelector('meta[name="flairy-public-origin"]');
+    if (meta && meta.content) return String(meta.content).trim().replace(/\/+$/, "");
+    return SITE_DOMAIN_FALLBACK;
+  }
+
   function getSiteDomain(options) {
     var configured = options && options.siteDomain ? String(options.siteDomain).trim() : "";
-    var base = configured || SITE_DOMAIN || getOrigin();
+    var base = configured || getConfiguredSiteDomain() || getOrigin();
     return base.replace(/\/+$/, "");
   }
 

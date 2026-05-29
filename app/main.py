@@ -34,7 +34,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.auth.dependencies import get_current_user_optional, COOKIE_KEY
+from app.auth.cookie_utils import clear_access_token_cookie
+from app.auth.dependencies import get_current_user_optional
 from app.crud import get_project, get_projects_by_user_id
 from app.database import (
     SessionLocal,
@@ -58,6 +59,7 @@ from app.routes import generate as generate_router
 from app.routes import media as media_router
 from app.routes import task as task_router
 from app.routes import admin as admin_router
+from app.config import get_public_base_url
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -68,6 +70,7 @@ RAW_DIR = ROOT / "storage" / "raw"
 
 app = FastAPI(title="Flairy v4")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["public_base_url"] = get_public_base_url()
 
 
 @app.on_event("startup")
@@ -188,7 +191,7 @@ def _build_share_meta(
 async def auth_logout():
     """JWT 쿠키 삭제 후 메인(/)으로 리다이렉트."""
     response = RedirectResponse(url="/", status_code=302)
-    response.delete_cookie(COOKIE_KEY, path="/")
+    clear_access_token_cookie(response)
     return response
 
 

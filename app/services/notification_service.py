@@ -1,9 +1,9 @@
 import logging
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
+from app.config import get_public_base_url
 
-MAGIC_LINK_ORIGIN = "http://121.133.47.184:8000"
+logger = logging.getLogger(__name__)
 
 
 def send_task_completion_alert(task_id: UUID | str, notify_target: str | None) -> None:
@@ -17,5 +17,5 @@ def send_task_completion_alert(task_id: UUID | str, notify_target: str | None) -
     task_id_str = str(task_id).strip()
     if not task_id_str:
         return
-    magic_link = f"{MAGIC_LINK_ORIGIN}/?task_id={task_id_str}"
+    magic_link = f"{get_public_base_url()}/?task_id={task_id_str}"
     logger.info("[알림 전송] 앨범 완성! 매직링크: %s (target=%s)", magic_link, target)

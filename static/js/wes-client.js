@@ -1,7 +1,14 @@
 (function (window, document) {
   var STORAGE_KEY = "flairy_active_task";
   var POLL_INTERVAL_MS = 3000;
-  var MAGIC_LINK_ORIGIN = "http://121.133.47.184:8000";
+  function getMagicLinkOrigin() {
+    if (typeof window.FLAIRY_PUBLIC_ORIGIN === "string" && window.FLAIRY_PUBLIC_ORIGIN.trim()) {
+      return window.FLAIRY_PUBLIC_ORIGIN.trim().replace(/\/+$/, "");
+    }
+    var meta = document.querySelector('meta[name="flairy-public-origin"]');
+    if (meta && meta.content) return String(meta.content).trim().replace(/\/+$/, "");
+    return window.location.origin;
+  }
   var ACTIVE_STATUSES = { PENDING: true, ANALYZING: true, COMPOSING: true, GENERATING: true };
   var pollHandle = null;
   var lastMessage = "";
@@ -44,7 +51,7 @@
   }
 
   function getMagicLink(taskId) {
-    return MAGIC_LINK_ORIGIN + "/?task_id=" + encodeURIComponent(taskId || "");
+    return getMagicLinkOrigin() + "/?task_id=" + encodeURIComponent(taskId || "");
   }
 
   function showToast(message) {
@@ -95,11 +102,6 @@
       '  <div class="mt-2 flex gap-2">' +
       '    <button id="wesCopyMagicBtn" type="button" class="px-3 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm bg-white">매직 링크 복사</button>' +
       "  </div>" +
-      '  <p class="mt-3 text-xs text-gray-600">완성되면 카톡으로 알려드려요</p>' +
-      '  <div class="mt-2 flex gap-2">' +
-      '    <input id="wesNotifyInput" type="tel" placeholder="전화번호 입력" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white" />' +
-      '    <button id="wesNotifyBtn" type="button" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm">신청</button>' +
-      "  </div>" +
       "</div>";
     var root = document.querySelector(".max-w-4xl") || document.body;
     root.appendChild(card);
@@ -128,38 +130,6 @@
       } else {
         showToast("현재 브라우저에서는 클립보드 복사를 지원하지 않습니다.");
       }
-    });
-
-    var notifyBtn = card.querySelector("#wesNotifyBtn");
-    notifyBtn.addEventListener("click", function () {
-      if (!currentTaskId) return;
-      var input = card.querySelector("#wesNotifyInput");
-      var phone = String((input && input.value) || "").trim();
-      if (!phone) {
-        showToast("전화번호를 입력해 주세요.");
-        return;
-      }
-      window
-        .fetch("/api/tasks/" + encodeURIComponent(currentTaskId) + "/notify", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ notify_target: phone }),
-        })
-        .then(function (r) {
-          if (!r.ok) {
-            return r.json().then(function (d) {
-              throw new Error((d && d.detail) || "알림 신청 실패");
-            });
-          }
-          return r.json();
-        })
-        .then(function () {
-          showToast("알림 신청이 완료되었습니다.");
-        })
-        .catch(function (e) {
-          showToast(e.message || "알림 신청에 실패했습니다.");
-        });
     });
     return card;
   }

@@ -29,9 +29,7 @@ def get_kakao_client_secret() -> str:
 
 
 def get_kakao_redirect_uri() -> str:
-    # Kakao 콘솔 설정 필요:
-    # - 제품 설정 > 카카오 로그인 > 활성화 ON
-    # - Redirect URI: http://121.133.47.184:8000/api/auth/kakao/callback
+    # Kakao 콘솔: REST API 키 > 리다이렉트 URI = https://flairy.kr/api/auth/kakao/callback
     return os.getenv("KAKAO_REDIRECT_URI", "http://localhost:8000/api/auth/kakao/callback").strip()
 
 
