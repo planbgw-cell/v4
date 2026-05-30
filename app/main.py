@@ -161,7 +161,8 @@ def _project_album_share_image_url(project_id: str, media_files) -> str | None:
 def _absolute_url(request: Request, relative_path: str | None) -> str | None:
     if not relative_path:
         return None
-    return str(request.url_for("index")).rstrip("/") + relative_path
+    base = get_public_base_url()
+    return base + relative_path
 
 
 def _build_share_meta(

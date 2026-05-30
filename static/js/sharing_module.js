@@ -152,7 +152,6 @@
     options = options || {};
     var kakaoJsKey = options.kakaoJsKey || "";
     var fallbackImageUrl = options.fallbackImageUrl || "";
-    var siteDomain = getSiteDomain(options);
 
     var modal = document.getElementById("shareModal");
     var backdrop = document.getElementById("shareModalBackdrop");
@@ -173,7 +172,7 @@
       projectId: "",
       projectType: "video",
       title: "Flairy",
-      url: siteDomain + "/",
+      url: getSiteDomain(options) + "/",
       imageUrl: normalizeAbsoluteUrl(fallbackImageUrl)
     };
 
@@ -184,18 +183,19 @@
     }
 
     function openModalByButton(btn) {
+      var domain = getSiteDomain(options);
       var pid = (btn && btn.getAttribute("data-project-id")) || (root && root.getAttribute("data-project-id")) || "";
       var ptype = (btn && btn.getAttribute("data-project-type")) || (root && root.getAttribute("data-project-type")) || "video";
       var ptitle = (btn && btn.getAttribute("data-project-title")) || document.title || "Flairy";
       state.projectId = pid;
       state.projectType = ptype;
       state.title = ptitle;
-      state.url = buildShareUrl(ptype, pid, { siteDomain: siteDomain });
+      state.url = buildShareUrl(ptype, pid, { siteDomain: domain });
       state.imageUrl = buildDefaultShareImage(
         ptype,
         pid,
         (btn && btn.getAttribute("data-share-image")) || fallbackImageUrl || "",
-        { siteDomain: siteDomain }
+        { siteDomain: domain }
       );
 
       console.log("[Sharing] generated share URL:", state.url);

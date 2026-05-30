@@ -217,12 +217,13 @@
 {% if kakao_js_key %}
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
 {% endif %}
-<script src="/static/js/sharing_module.js"></script>
+<script src="/static/js/sharing_module.js?v=1.0.1"></script>
 <script>
 (function () {
   if (!window.FlairySharing || !window.FlairySharing.init) return;
   window.FlairySharing.init({
     kakaoJsKey: "{{ kakao_js_key or '' }}",
+    siteDomain: "{{ public_base_url }}",
     fallbackImageUrl: "{{ share_meta.image if share_meta is defined and share_meta.image else '' }}"
   });
 })();
