@@ -30,7 +30,7 @@ logging.getLogger("engine").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -107,6 +107,26 @@ if FINAL_DIR.exists():
     app.mount("/outputs", StaticFiles(directory=str(FINAL_DIR)), name="outputs")
 if RAW_DIR.exists():
     app.mount("/raw", StaticFiles(directory=str(RAW_DIR)), name="raw")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    return FileResponse(STATIC_DIR / "robots.txt")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    return FileResponse(STATIC_DIR / "sitemap.xml")
+
+
+@app.get("/naver165a00cf1f3e82c9da72390a99d8ffeb.html", include_in_schema=False)
+async def naver_site_verification():
+    return FileResponse(STATIC_DIR / "naver165a00cf1f3e82c9da72390a99d8ffeb.html")
+
+
+@app.get("/googleeccc34be6d8b0e81.html", include_in_schema=False)
+async def google_site_verification():
+    return FileResponse(STATIC_DIR / "googleeccc34be6d8b0e81.html")
 
 
 def _mypage_thumbnail_url(project_id: UUID, first_media_path: str | None) -> str | None:

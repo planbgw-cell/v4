@@ -1,5 +1,24 @@
 {% extends "layouts/base.html" %}
-{% block title %}Flairy - 디지털 앨범 서비스{% endblock %}
+{% block title %}Flairy (플레어리) - AI 하이라이트 영상 및 디지털 앨범 서비스{% endblock %}
+{% block head %}
+  {{ super() }}
+  <meta name="description" content="사진과 동영상을 업로드하면 AI가 자동으로 배경음악(BGM)과 싱크를 맞춘 감동적인 하이라이트 영상과 디지털 앨범을 만들어 드립니다.">
+  <meta name="keywords" content="Flairy, 플레어리, 디지털 앨범, 하이라이트 영상, AI 영상 제작, 동영상 자동 편집, 추억 저장, 스마트 앨범">
+  <meta name="author" content="Flairy Team">
+  <link rel="canonical" href="https://flairy.kr">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Flairy (플레어리) - AI 디지털 앨범 & 하이라이트 영상">
+  <meta property="og:description" content="터치 한 번으로 완성되는 우리만의 특별한 하이라이트 영상. 지금 무료로 디지털 앨범을 만들고 친구들에게 공유해보세요!">
+  <meta property="og:image" content="https://flairy.kr/static/images/og-preview.png">
+  <meta property="og:url" content="https://flairy.kr">
+  <meta property="og:site_name" content="Flairy">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Flairy (플레어리) - AI 디지털 앨범">
+  <meta name="twitter:description" content="사진과 영상을 올리면 AI가 하이라이트 영상을 뚝딱! 추억을 가장 아름답게 보관하는 방법.">
+  <meta name="twitter:image" content="https://flairy.kr/static/images/og-preview.png">
+{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-6">
