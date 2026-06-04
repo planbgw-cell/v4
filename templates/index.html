@@ -21,6 +21,19 @@
 {% endblock %}
 
 {% block content %}
+<div class="notice-top-bar bg-gray-900 text-white text-sm py-2 px-4 flex items-center justify-between">
+  <div class="flex items-center space-x-2 min-w-0">
+    <span class="bg-red-500 text-xs px-2 py-0.5 rounded font-bold shrink-0">공지</span>
+    {% if latest_notice %}
+      <a href="/notice/{{ latest_notice.id }}" class="hover:underline truncate max-w-xl">
+        {{ latest_notice.title }}
+      </a>
+    {% else %}
+      <span class="text-gray-400">등록된 새로운 공지사항이 없습니다.</span>
+    {% endif %}
+  </div>
+  <a href="/notice" class="text-xs text-gray-400 hover:text-white shrink-0 ml-4">전체보기 &rarr;</a>
+</div>
 <div class="max-w-4xl mx-auto px-4 py-6">
   {% include "partials/header.html" %}
   <div class="mb-8"></div>
@@ -185,9 +198,10 @@
             ? '<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 mr-1">고정</span>'
             : '';
           var dateText = n.created_at ? new Date(n.created_at).toLocaleDateString("ko-KR") : '-';
+          var titleHtml = '<a href="/notice/' + n.id + '" class="text-sm text-gray-700 truncate hover:text-indigo-600 hover:underline">' + badge + n.title + '</a>';
           return (
             '<li class="py-2 flex items-center justify-between gap-3">' +
-              '<span class="text-sm text-gray-700 truncate">' + badge + n.title + '</span>' +
+              '<span class="min-w-0 flex-1">' + titleHtml + '</span>' +
               '<span class="text-xs text-gray-400 whitespace-nowrap">' + dateText + '</span>' +
             '</li>'
           );

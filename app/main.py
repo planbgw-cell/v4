@@ -62,7 +62,9 @@ from app.routes import task as task_router
 from app.routes import admin as admin_router
 from app.routes import analytics as analytics_router
 from app.routes import admin_analytics as admin_analytics_router
+from app.routes import notices as notices_router
 from app.config import get_public_base_url
+from app.models import Notice
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -106,6 +108,7 @@ app.include_router(media_router.router)
 app.include_router(task_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_analytics_router.router)
+app.include_router(notices_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -230,9 +233,24 @@ def _is_debug_admin_email(email: str | None) -> bool:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, current_user=Depends(get_current_user_optional)):
     is_admin = bool(current_user and _is_debug_admin_email(getattr(current_user, "email", None)))
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "current_user": current_user, "is_admin": is_admin}
-    )
+    db = SessionLocal()
+    try:
+        latest_notice = (
+            db.query(Notice)
+            .order_by(Notice.is_pinned.desc(), Notice.created_at.desc())
+            .first()
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "current_user": current_user,
+                "is_admin": is_admin,
+                "latest_notice": latest_notice,
+            },
+        )
+    finally:
+        db.close()
 
 
 @app.get("/mypage", response_class=HTMLResponse)

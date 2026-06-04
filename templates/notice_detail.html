@@ -1,0 +1,42 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ notice.title }} - 공지사항 - Flairy{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6">
+  {% include "partials/header.html" %}
+
+  <article class="mt-6 rounded-xl border border-gray-200 bg-white overflow-hidden">
+    <header class="px-6 py-5 border-b border-gray-100">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        {% if notice.is_pinned %}
+        <span class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">📌 상단 고정</span>
+        {% endif %}
+        <span class="text-xs text-gray-400">{{ created_at_kst }}</span>
+        <span class="text-xs text-gray-400">조회 {{ notice.view_count }}</span>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 leading-snug">{{ notice.title }}</h1>
+    </header>
+
+    <div class="notice-content px-6 py-6 text-gray-700 text-base leading-relaxed whitespace-pre-wrap break-all">
+      {{ notice.content | safe }}
+    </div>
+  </article>
+
+  <div class="mt-6 flex flex-wrap gap-3">
+    <a href="/notice" class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+      목록으로 돌아가기
+    </a>
+    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium">
+      메인으로
+    </a>
+  </div>
+</div>
+{% include "partials/auth_modal.html" %}
+{% endblock %}
+{% block head %}
+{{ super() }}
+<style>
+  .notice-content img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+  .notice-content p { margin-bottom: 0.75rem; }
+  .notice-content ul, .notice-content ol { margin: 0.75rem 0 0.75rem 1.25rem; }
+</style>
+{% endblock %}
