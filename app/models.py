@@ -174,3 +174,54 @@ class Inquiry(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class VisitorSession(Base):
+    __tablename__ = "visitor_sessions"
+
+    session_id = Column(String(64), primary_key=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_active_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    total_stay_duration = Column(Integer, nullable=False, default=0)  # seconds
+    is_converted_signup = Column(Boolean, nullable=False, default=False)
+    is_converted_video = Column(Boolean, nullable=False, default=False)
+    latest_inflow_channel = Column(String(50), nullable=True)
+    landing_page = Column(String(1024), nullable=True)
+    referrer_url = Column(String(2048), nullable=True)
+    utm_source = Column(String(255), nullable=True)
+    utm_medium = Column(String(255), nullable=True)
+    utm_campaign = Column(String(255), nullable=True)
+    utm_term = Column(String(255), nullable=True)
+    utm_content = Column(String(255), nullable=True)
+    device_type = Column(String(20), nullable=True)
+    os_name = Column(String(50), nullable=True)
+    browser_name = Column(String(50), nullable=True)
+    ip_hash = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class VisitorLog(Base):
+    __tablename__ = "visitor_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(String(64), ForeignKey("visitor_sessions.session_id", ondelete="CASCADE"), nullable=False)
+    inflow_channel = Column(String(50), nullable=False, default="direct")
+    referrer_url = Column(String(2048), nullable=True)
+    landing_page = Column(String(1024), nullable=True)
+    utm_source = Column(String(255), nullable=True)
+    utm_medium = Column(String(255), nullable=True)
+    utm_campaign = Column(String(255), nullable=True)
+    utm_term = Column(String(255), nullable=True)
+    utm_content = Column(String(255), nullable=True)
+    ip_hash = Column(String(64), nullable=True)
+    user_agent = Column(String(1024), nullable=True)
+    device_type = Column(String(20), nullable=True)
+    os_name = Column(String(50), nullable=True)
+    browser_name = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

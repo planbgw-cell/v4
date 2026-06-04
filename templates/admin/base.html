@@ -124,6 +124,9 @@
       <a class="nav-link {% if request.url.path == '/admin/audit' %}active{% endif %}" href="/admin/audit">
         <i class="fa-solid fa-shield-halved" style="width:16px;margin-right:8px;"></i>감사 로그
       </a>
+      <a class="nav-link {% if request.url.path == '/admin/analytics' %}active{% endif %}" href="/admin/analytics">
+        <i class="fa-solid fa-chart-pie" style="width:16px;margin-right:8px;"></i>유입 분석
+      </a>
     </aside>
     <main class="admin-main">
       <div id="sessionWarning" class="session-warning">보안을 위해 세션이 곧 만료됩니다.</div>

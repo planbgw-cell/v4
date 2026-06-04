@@ -78,6 +78,100 @@
 </head>
 <body class="{% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}">
   {% block content %}{% endblock %}
+  <script>
+  (function () {
+    if (window.__flairyAnalyticsInit) return;
+    window.__flairyAnalyticsInit = true;
+
+    var STORAGE_KEY = "flairy_session_id";
+    var COOKIE_KEY = "flairy_analytics_sid";
+    var COLLECT_URL = "/api/v1/analytics/collect";
+    var STAY_URL = "/api/v1/analytics/stay-time";
+
+    function makeSessionId() {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+      return "sid-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+    }
+    function getSessionId() {
+      var sid = "";
+      try { sid = (window.localStorage.getItem(STORAGE_KEY) || "").trim(); } catch (e) {}
+      if (!sid) {
+        sid = makeSessionId();
+        try { window.localStorage.setItem(STORAGE_KEY, sid); } catch (e2) {}
+      }
+      document.cookie = COOKIE_KEY + "=" + encodeURIComponent(sid) + "; path=/; max-age=31536000; samesite=lax";
+      return sid;
+    }
+    function getUtm() {
+      var p = new URLSearchParams(window.location.search || "");
+      return {
+        utm_source: p.get("utm_source") || "",
+        utm_medium: p.get("utm_medium") || "",
+        utm_campaign: p.get("utm_campaign") || "",
+        utm_term: p.get("utm_term") || "",
+        utm_content: p.get("utm_content") || "",
+      };
+    }
+    function collect(sid) {
+      var utm = getUtm();
+      var payload = {
+        session_id: sid,
+        referrer_url: document.referrer || "",
+        landing_page: window.location.pathname + window.location.search,
+        utm_source: utm.utm_source,
+        utm_medium: utm.utm_medium,
+        utm_campaign: utm.utm_campaign,
+        utm_term: utm.utm_term,
+        utm_content: utm.utm_content
+      };
+      fetch(COLLECT_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Flairy-Session-Id": sid },
+        body: JSON.stringify(payload),
+      }).catch(function () {});
+    }
+
+    var sid = getSessionId();
+    collect(sid);
+
+    var activeStart = Date.now();
+    function flushStay(useBeacon) {
+      if (!activeStart) return;
+      var now = Date.now();
+      var seconds = Math.floor((now - activeStart) / 1000);
+      activeStart = 0;
+      if (seconds <= 0) return;
+      var body = JSON.stringify({ session_id: sid, stay_duration: seconds });
+      if (useBeacon && navigator.sendBeacon) {
+        var blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(STAY_URL, blob);
+        return;
+      }
+      fetch(STAY_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Flairy-Session-Id": sid },
+        body: body,
+        keepalive: true,
+      }).catch(function () {});
+    }
+    function resumeStay() {
+      if (!activeStart) activeStart = Date.now();
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        flushStay(false);
+      } else if (document.visibilityState === "visible") {
+        resumeStay();
+      }
+    });
+    window.addEventListener("pagehide", function () {
+      flushStay(true);
+    });
+  })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   {% block scripts %}{% endblock %}
 </body>

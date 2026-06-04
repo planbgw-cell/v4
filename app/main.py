@@ -40,6 +40,7 @@ from app.crud import get_project, get_projects_by_user_id
 from app.database import (
     SessionLocal,
     ensure_admin_action_logs_table,
+    ensure_visitor_analytics_tables,
     ensure_ai_narrative_order_column,
     ensure_ai_progress_columns,
     ensure_admin_users_table,
@@ -59,6 +60,8 @@ from app.routes import generate as generate_router
 from app.routes import media as media_router
 from app.routes import task as task_router
 from app.routes import admin as admin_router
+from app.routes import analytics as analytics_router
+from app.routes import admin_analytics as admin_analytics_router
 from app.config import get_public_base_url
 
 APP_DIR = Path(__file__).resolve().parent
@@ -87,6 +90,7 @@ def on_startup():
     ensure_users_table_addons()
     ensure_media_processing_status_column()
     ensure_admin_action_logs_table()
+    ensure_visitor_analytics_tables()
     for route in app.routes:
         print(f"[Route Check] Path: {route.path}")
         logger.info("[Route Check] Path: %s", route.path)
@@ -100,6 +104,8 @@ app.include_router(status_router.router)
 app.include_router(generate_router.router)
 app.include_router(media_router.router)
 app.include_router(task_router.router)
+app.include_router(analytics_router.router)
+app.include_router(admin_analytics_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

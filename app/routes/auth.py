@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from datetime import timedelta
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -36,9 +36,10 @@ from app.auth.security import (
 )
 from app.auth.cookie_utils import clear_access_token_cookie, set_access_token_cookie
 from app.auth.dependencies import get_current_user
-from app.crud import create_user, get_user_by_email
+from app.crud import create_user, get_user_by_email, mark_session_signup_conversion
 from app.database import get_db
 from app.models import User
+from app.routes.analytics import extract_analytics_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -68,12 +69,18 @@ class LoginBody(BaseModel):
 
 
 @router.post("/signup")
-def signup(body: SignupBody, db: Session = Depends(get_db)):
+def signup(body: SignupBody, request: Request, db: Session = Depends(get_db)):
     """중복 이메일 체크 후 비밀번호 암호화 저장."""
     if get_user_by_email(db, body.email):
         raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
     hashed = hash_password(body.password)
     user = create_user(db, email=body.email, hashed_password=hashed, provider="local")
+    sid = extract_analytics_session_id(request)
+    if sid:
+        try:
+            mark_session_signup_conversion(db, session_id=sid)
+        except Exception:
+            logger.exception("signup conversion mark failed: session_id=%s", sid)
     return {"message": "회원가입 완료", "user_id": str(user.id), "email": user.email}
 
 

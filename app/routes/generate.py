@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import text
 
 from app.auth.dependencies import get_current_user_optional
@@ -20,6 +20,7 @@ from app.crud import (
     get_project,
     get_project_media_readiness,
     mark_video_task_status,
+    mark_session_video_conversion,
     update_project_output_path,
     update_project_status,
 )
@@ -35,6 +36,7 @@ from engine.album_engine import build_layout, build_layout_ai, save_album_layout
 from engine.bgm_engine import get_dominant_emotion, select_bgm_path
 from engine.video_engine import FlairyVideoEngine
 from app.utils.ffmpeg_accel import get_accel_type
+from app.routes.analytics import extract_analytics_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -484,6 +486,7 @@ async def api_project_media_readiness(project_id: str):
 async def api_generate(
     project_id: str,
     background_tasks: BackgroundTasks,
+    request: Request,
     merge_mode: str | None = None,
     debug_mode: bool = False,
     current_user=Depends(get_current_user_optional),
@@ -527,6 +530,12 @@ async def api_generate(
                     "AI 분석 단계: project_id=%s mode=ai (렌더링은 분석 완료 후 진행)",
                     project_id,
                 )
+                sid = extract_analytics_session_id(request)
+                if sid:
+                    try:
+                        mark_session_video_conversion(db, session_id=sid)
+                    except Exception:
+                        logger.exception("video conversion mark failed (analyzing): session_id=%s", sid)
                 return {
                     "status": "accepted",
                     "message": "AI 분석을 시작합니다.",
@@ -558,6 +567,15 @@ async def api_generate(
         getattr(raw_mode, "value", raw_mode) if raw_mode is not None else None,
     )
     background_tasks.add_task(_run_generate_task, project_id, merge_mode)
+    sid = extract_analytics_session_id(request)
+    if sid:
+        db2 = SessionLocal()
+        try:
+            mark_session_video_conversion(db2, session_id=sid)
+        except Exception:
+            logger.exception("video conversion mark failed (generating): session_id=%s", sid)
+        finally:
+            db2.close()
     return {
         "status": "accepted",
         "message": "영상 생성이 시작되었습니다.",

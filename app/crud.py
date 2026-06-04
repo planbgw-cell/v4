@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import MediaFile, Project, ProjectMode, User, VideoTask
+from app.models import MediaFile, Project, ProjectMode, User, VideoTask, VisitorLog, VisitorSession
 
 
 # ---------- Users ----------
@@ -474,3 +474,130 @@ def claim_video_task(
     db.commit()
     db.refresh(task)
     return task
+
+
+def upsert_visitor_session(
+    db: Session,
+    *,
+    session_id: str,
+    inflow_channel: str,
+    landing_page: str | None,
+    referrer_url: str | None,
+    utm_source: str | None,
+    utm_medium: str | None,
+    utm_campaign: str | None,
+    utm_term: str | None,
+    utm_content: str | None,
+    device_type: str,
+    os_name: str,
+    browser_name: str,
+    ip_hash: str | None,
+) -> VisitorSession:
+    row = db.query(VisitorSession).filter(VisitorSession.session_id == session_id).first()
+    if row is None:
+        row = VisitorSession(
+            session_id=session_id,
+            latest_inflow_channel=inflow_channel,
+            landing_page=landing_page,
+            referrer_url=referrer_url,
+            utm_source=utm_source,
+            utm_medium=utm_medium,
+            utm_campaign=utm_campaign,
+            utm_term=utm_term,
+            utm_content=utm_content,
+            device_type=device_type,
+            os_name=os_name,
+            browser_name=browser_name,
+            ip_hash=ip_hash,
+        )
+        db.add(row)
+    else:
+        row.last_active_at = datetime.now(timezone.utc)
+        row.latest_inflow_channel = inflow_channel or row.latest_inflow_channel
+        row.landing_page = landing_page or row.landing_page
+        row.referrer_url = referrer_url or row.referrer_url
+        row.utm_source = utm_source or row.utm_source
+        row.utm_medium = utm_medium or row.utm_medium
+        row.utm_campaign = utm_campaign or row.utm_campaign
+        row.utm_term = utm_term or row.utm_term
+        row.utm_content = utm_content or row.utm_content
+        row.device_type = device_type or row.device_type
+        row.os_name = os_name or row.os_name
+        row.browser_name = browser_name or row.browser_name
+        row.ip_hash = ip_hash or row.ip_hash
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def create_visitor_log(
+    db: Session,
+    *,
+    session_id: str,
+    inflow_channel: str,
+    referrer_url: str | None,
+    landing_page: str | None,
+    utm_source: str | None,
+    utm_medium: str | None,
+    utm_campaign: str | None,
+    utm_term: str | None,
+    utm_content: str | None,
+    ip_hash: str | None,
+    user_agent: str | None,
+    device_type: str,
+    os_name: str,
+    browser_name: str,
+) -> VisitorLog:
+    row = VisitorLog(
+        session_id=session_id,
+        inflow_channel=inflow_channel,
+        referrer_url=referrer_url,
+        landing_page=landing_page,
+        utm_source=utm_source,
+        utm_medium=utm_medium,
+        utm_campaign=utm_campaign,
+        utm_term=utm_term,
+        utm_content=utm_content,
+        ip_hash=ip_hash,
+        user_agent=user_agent,
+        device_type=device_type,
+        os_name=os_name,
+        browser_name=browser_name,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def add_session_stay_duration(db: Session, *, session_id: str, duration_seconds: int) -> VisitorSession | None:
+    row = db.query(VisitorSession).filter(VisitorSession.session_id == session_id).first()
+    if row is None:
+        return None
+    row.total_stay_duration = int(row.total_stay_duration or 0) + max(0, int(duration_seconds))
+    row.last_active_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def mark_session_signup_conversion(db: Session, *, session_id: str) -> VisitorSession | None:
+    row = db.query(VisitorSession).filter(VisitorSession.session_id == session_id).first()
+    if row is None:
+        return None
+    row.is_converted_signup = True
+    row.last_active_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def mark_session_video_conversion(db: Session, *, session_id: str) -> VisitorSession | None:
+    row = db.query(VisitorSession).filter(VisitorSession.session_id == session_id).first()
+    if row is None:
+        return None
+    row.is_converted_video = True
+    row.last_active_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row

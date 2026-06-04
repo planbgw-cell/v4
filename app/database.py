@@ -261,6 +261,70 @@ def ensure_admin_action_logs_table() -> None:
         pass
 
 
+def ensure_visitor_analytics_tables() -> None:
+    """실시간 유입/세션 분석 테이블 및 인덱스를 보장한다."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS visitor_sessions (
+                    session_id VARCHAR(64) PRIMARY KEY,
+                    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    last_active_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    total_stay_duration INTEGER NOT NULL DEFAULT 0,
+                    is_converted_signup BOOLEAN NOT NULL DEFAULT FALSE,
+                    is_converted_video BOOLEAN NOT NULL DEFAULT FALSE,
+                    latest_inflow_channel VARCHAR(50),
+                    landing_page VARCHAR(1024),
+                    referrer_url VARCHAR(2048),
+                    utm_source VARCHAR(255),
+                    utm_medium VARCHAR(255),
+                    utm_campaign VARCHAR(255),
+                    utm_term VARCHAR(255),
+                    utm_content VARCHAR(255),
+                    device_type VARCHAR(20),
+                    os_name VARCHAR(50),
+                    browser_name VARCHAR(50),
+                    ip_hash VARCHAR(64),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS visitor_logs (
+                    id UUID PRIMARY KEY,
+                    session_id VARCHAR(64) NOT NULL REFERENCES visitor_sessions(session_id) ON DELETE CASCADE,
+                    inflow_channel VARCHAR(50) NOT NULL DEFAULT 'direct',
+                    referrer_url VARCHAR(2048),
+                    landing_page VARCHAR(1024),
+                    utm_source VARCHAR(255),
+                    utm_medium VARCHAR(255),
+                    utm_campaign VARCHAR(255),
+                    utm_term VARCHAR(255),
+                    utm_content VARCHAR(255),
+                    ip_hash VARCHAR(64),
+                    user_agent VARCHAR(1024),
+                    device_type VARCHAR(20),
+                    os_name VARCHAR(50),
+                    browser_name VARCHAR(50),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_visitor_logs_created_at ON visitor_logs (created_at DESC)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_visitor_logs_inflow_channel ON visitor_logs (inflow_channel)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_visitor_sessions_created_at ON visitor_sessions (created_at DESC)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_visitor_sessions_inflow_channel ON visitor_sessions (latest_inflow_channel)"
+            ))
+    except Exception:
+        pass
+
+
 def get_db():
     """FastAPI 의존성용: 요청마다 세션 생성 후 종료 시 close."""
     db = SessionLocal()
