@@ -1,0 +1,103 @@
+{% extends "layouts/base.html" %}
+{% block title %}문의하기 - 묻고답하기 - Flairy{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6">
+  {% include "partials/header.html" %}
+
+  <section class="mt-6 mb-4">
+    <h1 class="text-2xl font-bold text-gray-900">문의하기</h1>
+    <p class="text-sm text-gray-500 mt-1">궁금한 점을 남겨주시면 확인 후 답변드리겠습니다.</p>
+  </section>
+
+  <section class="rounded-xl border border-gray-200 bg-white p-6">
+    <form id="qnaWriteForm" class="space-y-4">
+      <div>
+        <label for="qnaTitle" class="block text-sm font-medium text-gray-700 mb-1">제목</label>
+        <input
+          type="text"
+          id="qnaTitle"
+          name="title"
+          maxlength="255"
+          required
+          placeholder="문의 제목을 입력하세요"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        />
+      </div>
+      <div>
+        <label for="qnaContent" class="block text-sm font-medium text-gray-700 mb-1">내용</label>
+        <textarea
+          id="qnaContent"
+          name="content"
+          required
+          rows="10"
+          placeholder="문의 내용을 입력하세요"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-y"
+        ></textarea>
+      </div>
+      <div class="flex flex-wrap gap-3 pt-2">
+        <button type="submit" id="qnaSubmitBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+          등록하기
+        </button>
+        <a href="/qna" class="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium">
+          취소
+        </a>
+      </div>
+    </form>
+  </section>
+</div>
+{% include "partials/auth_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("qnaWriteForm");
+  var btn = document.getElementById("qnaSubmitBtn");
+  if (!form) return;
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var title = (document.getElementById("qnaTitle").value || "").trim();
+    var content = (document.getElementById("qnaContent").value || "").trim();
+    if (!title || !content) {
+      alert("제목과 내용을 입력해 주세요.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "등록 중...";
+
+    fetch("/api/inquiries", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title, content: content }),
+    })
+      .then(function (res) {
+        if (res.status === 401) {
+          alert("로그인이 필요합니다.");
+          var headerAuthBtn = document.getElementById("headerAuthBtn");
+          if (headerAuthBtn) headerAuthBtn.click();
+          return null;
+        }
+        if (!res.ok) {
+          return res.json().then(function (d) {
+            throw new Error((d && d.detail) || "등록에 실패했습니다.");
+          });
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.id) {
+          window.location.href = "/qna/" + data.id;
+        }
+      })
+      .catch(function (err) {
+        alert(err.message || "등록에 실패했습니다.");
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = "등록하기";
+      });
+  });
+})();
+</script>
+{% endblock %}

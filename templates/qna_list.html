@@ -1,0 +1,89 @@
+{% extends "layouts/base.html" %}
+{% block title %}묻고답하기 - Flairy{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6">
+  {% include "partials/header.html" %}
+
+  <section class="mt-6 mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">묻고답하기</h1>
+      <p class="text-sm text-gray-500 mt-1">문의 내역을 확인하고 답변을 받아보세요.</p>
+    </div>
+    {% if current_user %}
+    <a href="/qna/new" class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium text-sm">
+      문의하기
+    </a>
+    {% endif %}
+  </section>
+
+  {% if not current_user %}
+  <section class="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+    <p class="text-gray-800 font-medium mb-2">문의는 로그인 회원만 작성할 수 있습니다.</p>
+    <p class="text-sm text-gray-600 mb-4">로그인 후 나의 문의 내역을 확인하고 새 문의를 등록할 수 있습니다.</p>
+    <button type="button" id="qnaLoginBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+      로그인하기
+    </button>
+  </section>
+  {% else %}
+  <section class="rounded-xl border border-gray-200 bg-white overflow-hidden">
+    {% if items %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-4 py-3 text-center font-semibold text-gray-600 w-24">상태</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-600">제목</th>
+            <th class="px-4 py-3 text-center font-semibold text-gray-600 w-36">작성일</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for item in items %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 text-center">
+              {% if item.inquiry.status == 'ANSWERED' %}
+              <span class="inline-block text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{{ item.status_label }}</span>
+              {% else %}
+              <span class="inline-block text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{{ item.status_label }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <a href="/qna/{{ item.inquiry.id }}" class="text-gray-800 hover:text-indigo-600 hover:underline truncate block">
+                {{ item.inquiry.title }}
+              </a>
+            </td>
+            <td class="px-4 py-3 text-center text-gray-500 whitespace-nowrap">{{ item.created_at_kst }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="px-6 py-16 text-center text-gray-500">
+      <p class="mb-4">등록된 문의가 없습니다.</p>
+      <a href="/qna/new" class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium text-sm">
+        첫 문의 작성하기
+      </a>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <div class="mt-6">
+    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium">
+      메인으로 돌아가기
+    </a>
+  </div>
+</div>
+{% include "partials/auth_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById("qnaLoginBtn");
+  var headerAuthBtn = document.getElementById("headerAuthBtn");
+  if (btn && headerAuthBtn) {
+    btn.addEventListener("click", function () { headerAuthBtn.click(); });
+  }
+})();
+</script>
+{% endblock %}

@@ -63,6 +63,7 @@ from app.routes import admin as admin_router
 from app.routes import analytics as analytics_router
 from app.routes import admin_analytics as admin_analytics_router
 from app.routes import notices as notices_router
+from app.routes import inquiries as inquiries_router
 from app.config import get_public_base_url
 from app.models import Notice
 
@@ -109,6 +110,7 @@ app.include_router(task_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_analytics_router.router)
 app.include_router(notices_router.router)
+app.include_router(inquiries_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

@@ -1,0 +1,44 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ inquiry.title }} - 묻고답하기 - Flairy{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6">
+  {% include "partials/header.html" %}
+
+  <article class="mt-6 rounded-xl border border-gray-200 bg-white overflow-hidden">
+    <header class="px-6 py-5 border-b border-gray-100">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        {% if is_answered %}
+        <span class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{{ status_label }}</span>
+        {% else %}
+        <span class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{{ status_label }}</span>
+        {% endif %}
+        <span class="text-xs text-gray-400">작성 {{ created_at_kst }}</span>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 leading-snug">{{ inquiry.title }}</h1>
+    </header>
+
+    <div class="px-6 py-5 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-500 mb-2">문의 내용</h2>
+      <div class="text-gray-700 text-base leading-relaxed whitespace-pre-wrap break-all">{{ inquiry.content }}</div>
+    </div>
+
+    {% if is_answered and inquiry.answer_content %}
+    <div class="px-6 py-5 bg-indigo-50/40">
+      <h2 class="text-sm font-semibold text-indigo-700 mb-2">관리자 답변{% if answered_at_kst != '-' %} · {{ answered_at_kst }}{% endif %}</h2>
+      <div class="text-gray-800 text-base leading-relaxed whitespace-pre-wrap break-all">{{ inquiry.answer_content }}</div>
+    </div>
+    {% elif not is_answered %}
+    <div class="px-6 py-4 bg-gray-50 text-sm text-gray-600">
+      답변 준비 중입니다. 확인 후 이 페이지에서 답변을 확인하실 수 있습니다.
+    </div>
+    {% endif %}
+  </article>
+
+  <div class="mt-6">
+    <a href="/qna" class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+      목록으로 돌아가기
+    </a>
+  </div>
+</div>
+{% include "partials/auth_modal.html" %}
+{% endblock %}

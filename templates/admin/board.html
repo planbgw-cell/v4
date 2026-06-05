@@ -29,7 +29,7 @@
 
 <div class="tabs">
   <button type="button" class="tab-btn active" data-tab="notices">공지사항</button>
-  <button type="button" class="tab-btn" data-tab="inquiries">Q&A</button>
+  <button type="button" class="tab-btn" data-tab="inquiries">묻고답하기</button>
 </div>
 
 <section id="tab-notices" class="card">
@@ -53,19 +53,21 @@
 </section>
 
 <section id="tab-inquiries" class="card hidden">
-  <h2 style="margin-top:0;">Q&A</h2>
+  <h2 style="margin-top:0;">묻고답하기</h2>
   <div class="board-grid">
     <div>
       <table class="list-table">
-        <thead><tr><th>상태</th><th>제목</th><th>등록일</th></tr></thead>
-        <tbody id="inq-tbody"><tr><td colspan="3" class="muted">로딩 중...</td></tr></tbody>
+        <thead><tr><th>상태</th><th>제목</th><th>등록일</th><th>액션</th></tr></thead>
+        <tbody id="inq-tbody"><tr><td colspan="4" class="muted">로딩 중...</td></tr></tbody>
       </table>
     </div>
     <div>
-      <div id="inq-detail" class="muted">문의를 선택해 주세요.</div>
-      <textarea id="inq-answer" class="field textarea" style="margin-top:10px;" placeholder="답변 내용을 입력하세요"></textarea>
+      <p id="inq-meta" class="muted" style="margin-top:0;">문의를 선택해 주세요.</p>
+      <input id="inq-title" class="field" style="margin-top:8px;" placeholder="문의 제목" disabled />
+      <textarea id="inq-content" class="field textarea" style="margin-top:8px;" placeholder="문의 내용" disabled></textarea>
+      <textarea id="inq-answer" class="field textarea" style="margin-top:8px;" placeholder="답변 내용 (비우면 답변 대기 상태로 복귀)" disabled></textarea>
       <div class="btn-row">
-        <button type="button" id="inq-save" class="btn-sm btn-primary">답변 저장</button>
+        <button type="button" id="inq-save" class="btn-sm btn-primary" disabled>저장</button>
       </div>
     </div>
   </div>
@@ -81,8 +83,11 @@
   const noticePinned = document.getElementById('notice-pinned');
   const noticeTbody = document.getElementById('notice-tbody');
   const inqTbody = document.getElementById('inq-tbody');
-  const inqDetail = document.getElementById('inq-detail');
+  const inqMeta = document.getElementById('inq-meta');
+  const inqTitle = document.getElementById('inq-title');
+  const inqContent = document.getElementById('inq-content');
   const inqAnswer = document.getElementById('inq-answer');
+  const inqSaveBtn = document.getElementById('inq-save');
 
   let editingNoticeId = null;
   let inquiriesCache = [];
@@ -194,26 +199,52 @@
 
   function renderInquiryDetail(item) {
     if (!item) {
-      inqDetail.textContent = '문의를 선택해 주세요.';
+      inqMeta.textContent = '문의를 선택해 주세요.';
+      inqTitle.value = '';
+      inqContent.value = '';
       inqAnswer.value = '';
+      inqTitle.disabled = true;
+      inqContent.disabled = true;
+      inqAnswer.disabled = true;
+      inqSaveBtn.disabled = true;
       return;
     }
     const owner = item.user_email || item.guest_token || '알 수 없음';
-    inqDetail.innerHTML = `
-      <h3 style="margin-top:0;">${item.title}</h3>
-      <p class="muted">작성자: ${owner}</p>
-      <p>${item.content}</p>
-      ${item.answer_content ? `<hr style="border-color:#1e293b;" /><p><strong>기존 답변</strong></p><p>${item.answer_content}</p>` : ''}
-    `;
+    inqMeta.textContent = '작성자: ' + owner + ' · 등록: ' + fmtDate(item.created_at);
+    inqTitle.value = item.title || '';
+    inqContent.value = item.content || '';
     inqAnswer.value = item.answer_content || '';
+    inqTitle.disabled = false;
+    inqContent.disabled = false;
+    inqAnswer.disabled = false;
+    inqSaveBtn.disabled = false;
   }
+
+  window.editInquiry = (inquiryId) => {
+    selectedInquiryId = inquiryId;
+    renderInquiryDetail(inquiriesCache.find((x) => x.id === inquiryId));
+  };
+
+  window.deleteInquiry = async (inquiryId) => {
+    if (!confirm('이 문의를 삭제하시겠습니까?')) return;
+    const res = await fetch('/api/admin/inquiries/' + inquiryId, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('삭제 실패');
+      return;
+    }
+    if (selectedInquiryId === inquiryId) {
+      selectedInquiryId = null;
+      renderInquiryDetail(null);
+    }
+    await loadInquiries();
+  };
 
   async function loadInquiries() {
     const res = await fetch('/api/admin/inquiries?page=1&page_size=100');
     const data = await res.json();
     inquiriesCache = data.items || [];
     if (!inquiriesCache.length) {
-      inqTbody.innerHTML = '<tr><td colspan="3" class="muted">문의가 없습니다.</td></tr>';
+      inqTbody.innerHTML = '<tr><td colspan="4" class="muted">문의가 없습니다.</td></tr>';
       renderInquiryDetail(null);
       return;
     }
@@ -222,6 +253,10 @@
         <td>${q.status === 'PENDING' ? '<span class="badge badge-pending">대기</span>' : '<span class="badge badge-answered">완료</span>'}</td>
         <td>${q.title}</td>
         <td>${fmtDate(q.created_at)}</td>
+        <td>
+          <button type="button" class="btn-sm" data-action="edit" data-id="${q.id}">수정</button>
+          <button type="button" class="btn-sm" data-action="delete" data-id="${q.id}">삭제</button>
+        </td>
       </tr>
     `).join('');
     document.querySelectorAll('#inq-tbody tr.clickable').forEach((row) => {
@@ -230,31 +265,49 @@
         renderInquiryDetail(inquiriesCache.find((x) => x.id === selectedInquiryId));
       });
     });
-    selectedInquiryId = inquiriesCache[0].id;
-    renderInquiryDetail(inquiriesCache[0]);
+    inqTbody.querySelectorAll('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (btn.dataset.action === 'edit') {
+          window.editInquiry(id);
+        } else {
+          window.deleteInquiry(id);
+        }
+      });
+    });
+    if (!selectedInquiryId || !inquiriesCache.find((x) => x.id === selectedInquiryId)) {
+      selectedInquiryId = inquiriesCache[0].id;
+    }
+    renderInquiryDetail(inquiriesCache.find((x) => x.id === selectedInquiryId));
   }
 
-  document.getElementById('inq-save').addEventListener('click', async () => {
+  inqSaveBtn.addEventListener('click', async () => {
     if (!selectedInquiryId) {
       alert('먼저 문의를 선택해 주세요.');
       return;
     }
-    const answer = inqAnswer.value.trim();
-    if (!answer) {
-      alert('답변 내용을 입력해 주세요.');
+    const title = inqTitle.value.trim();
+    const content = inqContent.value.trim();
+    if (!title || !content) {
+      alert('제목과 문의 내용을 입력해 주세요.');
       return;
     }
-    const res = await fetch(`/api/admin/inquiries/${selectedInquiryId}/answer`, {
-      method: 'POST',
+    const res = await fetch('/api/admin/inquiries/' + selectedInquiryId, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answer_content: answer }),
+      body: JSON.stringify({
+        title: title,
+        content: content,
+        answer_content: inqAnswer.value,
+      }),
     });
     if (!res.ok) {
-      alert('답변 저장 실패');
+      alert('저장 실패');
       return;
     }
     await loadInquiries();
-    alert('답변이 저장되었습니다.');
+    alert('저장되었습니다.');
   });
 
   loadNotices();

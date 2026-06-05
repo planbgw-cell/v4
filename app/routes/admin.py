@@ -104,6 +104,12 @@ class InquiryAnswerBody(BaseModel):
     answer_content: str = Field(min_length=1)
 
 
+class InquiryUpdateBody(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    answer_content: str | None = None
+
+
 class UserStatusBody(BaseModel):
     is_active: bool
 
@@ -595,6 +601,75 @@ def admin_answer_inquiry(
         raise HTTPException(status_code=404, detail="Inquiry not found")
     db.commit()
     return _serialize_inquiry_row(row)
+
+
+@router.put("/api/admin/inquiries/{inquiry_id}")
+def admin_update_inquiry(
+    inquiry_id: str,
+    body: InquiryUpdateBody,
+    admin_payload: dict = Depends(require_admin_api),
+    db: Session = Depends(get_db),
+):
+    current = db.execute(text("""
+        SELECT title, content, answer_content, status, answered_at
+        FROM board_inquiries WHERE id::text = :inquiry_id
+    """), {"inquiry_id": inquiry_id}).mappings().first()
+    if not current:
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+
+    title = body.title.strip() if body.title is not None else current["title"]
+    content = body.content.strip() if body.content is not None else current["content"]
+    answer_content = current["answer_content"]
+    status = (current.get("status") or "PENDING").upper()
+    answered_at = current.get("answered_at")
+
+    if body.answer_content is not None:
+        ac = body.answer_content.strip()
+        if ac:
+            answer_content = ac
+            status = "ANSWERED"
+            answered_at = datetime.now(timezone.utc)
+        else:
+            answer_content = None
+            status = "PENDING"
+            answered_at = None
+
+    row = db.execute(text("""
+        UPDATE board_inquiries
+        SET title = :title,
+            content = :content,
+            answer_content = :answer_content,
+            status = :status,
+            answered_at = :answered_at,
+            updated_at = now()
+        WHERE id::text = :inquiry_id
+        RETURNING id, user_id, guest_token, title, content, is_secret,
+                  answer_content, answered_at, status, created_at, updated_at
+    """), {
+        "inquiry_id": inquiry_id,
+        "title": title,
+        "content": content,
+        "answer_content": answer_content,
+        "status": status,
+        "answered_at": answered_at,
+    }).mappings().first()
+    db.commit()
+    return _serialize_inquiry_row(row)
+
+
+@router.delete("/api/admin/inquiries/{inquiry_id}")
+def admin_delete_inquiry(
+    inquiry_id: str,
+    admin_payload: dict = Depends(require_admin_api),
+    db: Session = Depends(get_db),
+):
+    result = db.execute(text("""
+        DELETE FROM board_inquiries WHERE id::text = :inquiry_id
+    """), {"inquiry_id": inquiry_id})
+    db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+    return {"ok": True, "id": inquiry_id}
 
 
 @router.get("/api/admin/users")
