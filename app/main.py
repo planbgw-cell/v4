@@ -66,6 +66,9 @@ from app.routes import notices as notices_router
 from app.routes import inquiries as inquiries_router
 from app.config import get_public_base_url
 from app.models import Notice
+from app.storage import get_project_final_dir
+
+COLLAGE_SHARE_FILENAMES = ("collage_front.jpg", "collage_front.png")
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -162,23 +165,36 @@ def _project_video_url(type: str, project_id: str, output_path: str | None) -> s
     return f"/outputs/{project_id}/output.mp4"
 
 
-def _project_media_thumb_url(project_id: str, media_files) -> str | None:
-    media_files = media_files or []
-    for media in media_files:
-        file_path = getattr(media, "file_path", None)
-        if not file_path:
-            continue
-        parts = file_path.replace("\\", "/").strip("/").split("/")
-        if len(parts) >= 4 and parts[0] == "storage" and parts[1] == "raw":
-            return f"/raw/{project_id}/{quote(parts[-1])}"
+def _project_mode_value(project) -> str:
+    if not project:
+        return "rule_based"
+    mode = getattr(project, "mode", None)
+    if mode is None:
+        return "rule_based"
+    if hasattr(mode, "value"):
+        return (mode.value or "rule_based") or "rule_based"
+    return "ai" if mode == "ai" else "rule_based"
+
+
+def _project_ai_collage_share_image_url(project_id: str, project) -> str | None:
+    """AI 하이라이트: 최종 생성 콜라주 앞표지(collage_front.jpg)를 카카오 공유 썸네일로 고정."""
+    if _project_mode_value(project) != "ai":
+        return None
+    try:
+        final_dir = get_project_final_dir(UUID(project_id))
+    except ValueError:
+        return None
+    for name in COLLAGE_SHARE_FILENAMES:
+        if (final_dir / name).is_file():
+            return f"/api/media/image/{project_id}/{quote(name)}?w=800"
     return None
 
 
-def _project_album_share_image_url(project_id: str, media_files) -> str | None:
-    media_files = media_files or []
-    for media in media_files:
-        file_type = (getattr(media, "file_type", "") or "").lower()
-        if file_type != "image":
+def _project_first_image_share_url(project_id: str, media_files) -> str | None:
+    """order_index 순 첫 image만 반환 (video/mp4 등 제외)."""
+    sorted_media = sorted(media_files or [], key=lambda m: getattr(m, "order_index", 0))
+    for media in sorted_media:
+        if (getattr(media, "file_type", "") or "").lower() != "image":
             continue
         file_path = getattr(media, "file_path", None)
         if not file_path:
@@ -187,6 +203,17 @@ def _project_album_share_image_url(project_id: str, media_files) -> str | None:
         if len(parts) >= 4 and parts[0] == "storage" and parts[1] == "raw":
             return f"/api/media/image/{project_id}/{quote(parts[-1])}?w=800"
     return None
+
+
+def _project_media_thumb_url(project_id: str, project, media_files) -> str | None:
+    collage_url = _project_ai_collage_share_image_url(project_id, project)
+    if collage_url:
+        return collage_url
+    return _project_first_image_share_url(project_id, media_files)
+
+
+def _project_album_share_image_url(project_id: str, media_files) -> str | None:
+    return _project_first_image_share_url(project_id, media_files)
 
 
 def _absolute_url(request: Request, relative_path: str | None) -> str | None:
@@ -387,7 +414,7 @@ async def viewer_page(
         project_status = (getattr(project, "status", None) or "PENDING").strip().upper()
         video_url = _project_video_url(type, project_id, project.output_path)
         media_files = getattr(project, "media_files", None)
-        thumb_url = _project_media_thumb_url(project_id, media_files)
+        thumb_url = _project_media_thumb_url(project_id, project, media_files)
         if type == "album":
             thumb_url = _project_album_share_image_url(project_id, media_files) or thumb_url
     finally:
@@ -447,7 +474,7 @@ async def share_viewer_page(
         project_status = (getattr(project, "status", None) or "PENDING").strip().upper()
         video_url = _project_video_url(type, project_id, project.output_path)
         media_files = getattr(project, "media_files", None)
-        thumb_url = _project_media_thumb_url(project_id, media_files)
+        thumb_url = _project_media_thumb_url(project_id, project, media_files)
         if type == "album":
             thumb_url = _project_album_share_image_url(project_id, media_files) or thumb_url
     finally:

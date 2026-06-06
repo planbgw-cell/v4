@@ -43,10 +43,30 @@
     return base + "/share/" + type + "/" + encodeURIComponent(projectId || "");
   }
 
-  function buildDefaultShareImage(projectType, projectId, imageUrl, options) {
-    var normalized = normalizeAbsoluteUrl(imageUrl || "");
-    if (normalized) return normalized;
+  function isLikelyVideoShareImage(url) {
+    return /\.(mp4|mov|webm|mkv|m4v|avi)(\?|#|$)/i.test(String(url || ""));
+  }
+
+  function resolveShareImageUrl(imageUrl, fallbackImageUrl) {
+    var primary = normalizeAbsoluteUrl(imageUrl || "");
+    if (primary && !isLikelyVideoShareImage(primary)) {
+      return primary;
+    }
+    var fallback = normalizeAbsoluteUrl(fallbackImageUrl || "");
+    if (fallback && !isLikelyVideoShareImage(fallback)) {
+      if (primary && isLikelyVideoShareImage(primary)) {
+        console.warn("[Sharing] video URL blocked for Kakao imageUrl, using fallback:", primary);
+      }
+      return fallback;
+    }
+    if (primary && isLikelyVideoShareImage(primary)) {
+      console.warn("[Sharing] video URL blocked for Kakao imageUrl:", primary);
+    }
     return "";
+  }
+
+  function buildDefaultShareImage(projectType, projectId, imageUrl, options) {
+    return resolveShareImageUrl(imageUrl, "");
   }
 
   function legacyCopy(text) {
@@ -200,6 +220,11 @@
 
       console.log("[Sharing] generated share URL:", state.url);
       console.log("[Sharing] generated image URL:", state.imageUrl);
+      if (!state.imageUrl) {
+        console.warn("[Sharing] share thumbnail missing or invalid (video URL blocked)");
+      } else if (state.imageUrl.indexOf("/api/media/image/") !== -1) {
+        console.log("[Sharing] share thumbnail uses resized image API (Kakao-safe)");
+      }
 
       if (titleEl) titleEl.textContent = ptitle;
       if (urlEl) urlEl.textContent = state.url;
@@ -231,11 +256,21 @@
           showToast("카카오 공유 설정이 없습니다.");
           return;
         }
+        var shareImageUrl = resolveShareImageUrl(state.imageUrl, fallbackImageUrl);
+        if (!shareImageUrl) {
+          console.error("[Sharing] Kakao share aborted: no valid image URL", {
+            imageUrl: state.imageUrl,
+            fallbackImageUrl: fallbackImageUrl
+          });
+          showToast("공유 썸네일을 불러올 수 없습니다.");
+          return;
+        }
+        console.log("[Sharing] Kakao imageUrl payload:", shareImageUrl);
         sendKakao({
           title: state.title,
           description: "Flairy에서 생성된 디지털 앨범입니다.",
-          imageUrl: normalizeAbsoluteUrl(state.imageUrl),
-          fallbackImageUrl: normalizeAbsoluteUrl(fallbackImageUrl),
+          imageUrl: shareImageUrl,
+          fallbackImageUrl: shareImageUrl,
           url: normalizeAbsoluteUrl(state.url)
         });
       });

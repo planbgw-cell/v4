@@ -63,7 +63,13 @@ from app.utils.audio_spec import (
     clip_audio_encode_args,
 )
 from app.utils.media_processor import IMAGE_EXTENSIONS, get_standard_orientation, load_image_upright
-from app.utils.ffmpeg_accel import build_h264_encoder_args, get_accel_type, run_ffmpeg_with_fallback
+from app.utils.ffmpeg_accel import (
+    build_cpu_fallback_cmd,
+    build_h264_encoder_args,
+    extract_ffmpeg_failure_reason,
+    get_accel_type,
+    run_ffmpeg_with_fallback,
+)
 from app.utils.path_manager import (
     CINEMATIC_FONT_PRIMARY,
     CINEMATIC_FONT_FALLBACK,
@@ -301,6 +307,83 @@ OUTPUT_CRF = 25
 USE_HEVC = os.environ.get("USE_HEVC", "").strip().lower() in ("1", "true", "yes")
 _NVENC_AVAILABLE: bool | None = None
 _VIDEOTOOLBOX_AVAILABLE: bool | None = None
+_HEVC_COLOR_METADATA_BSF = (
+    "hevc_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1"
+)
+_VIDEO_VF_COLORSPACE_PREFIX = "colorspace=all=bt709:iall=bt601-6-625:fast=1,format=yuv420p,"
+_INVALID_COLOR_TAG_VALUES = frozenset({"", "unknown", "reserved", "unspecified"})
+_FILTER_INIT_FAIL_MARKERS = (
+    "invalid color space",
+    "error reinitializing filters",
+)
+
+
+def _probe_video_codec_color(path: Path) -> dict[str, str | None]:
+    """ffprobe로 비디오 코덱·색공간 메타데이터 조회."""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,color_space,color_transfer,color_primaries",
+        "-of",
+        "json",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
+        if result.returncode != 0:
+            return {}
+        data = json.loads(result.stdout or "{}")
+        streams = data.get("streams") or []
+        if not streams:
+            return {}
+        s = streams[0]
+        return {
+            "codec_name": s.get("codec_name"),
+            "color_space": s.get("color_space"),
+            "color_transfer": s.get("color_transfer"),
+            "color_primaries": s.get("color_primaries"),
+        }
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("video color probe failed for %s: %s", path.name, e)
+        return {}
+
+
+def _video_needs_colorspace_metadata_fix(path: Path) -> tuple[bool, str]:
+    """HEVC 등 비정상 색공간 메타데이터 여부와 감사용 사유 문자열."""
+    info = _probe_video_codec_color(path)
+    codec = (info.get("codec_name") or "").lower()
+    if codec != "hevc":
+        return False, ""
+    bad_fields: list[str] = []
+    for key in ("color_space", "color_primaries", "color_transfer"):
+        raw = info.get(key)
+        val = (raw or "").lower()
+        if val in _INVALID_COLOR_TAG_VALUES:
+            bad_fields.append(f"{key}={raw or 'missing'}")
+    if not bad_fields:
+        return False, ""
+    return True, f"Invalid color space ({', '.join(bad_fields)}) in {path.name}"
+
+
+def _prepend_video_vf_colorspace_normalize(vf: str) -> str:
+    """VAAPI/스케일 필터 앞에 BT.709 + yuv420p 정규화를 선행 주입."""
+    stripped = vf.lstrip()
+    if stripped.startswith(_VIDEO_VF_COLORSPACE_PREFIX):
+        return vf
+    return _VIDEO_VF_COLORSPACE_PREFIX + stripped
+
+
+def _should_retry_video_clip_on_cpu(result: subprocess.CompletedProcess[str]) -> bool:
+    if result.returncode == 0:
+        return False
+    err = ((result.stderr or "") + (result.stdout or "")).lower()
+    if result.returncode in (218, 234):
+        return True
+    return any(marker in err for marker in _FILTER_INIT_FAIL_MARKERS)
 
 
 def _detect_videotoolbox() -> bool:
@@ -1026,6 +1109,79 @@ class FlairyVideoEngine:
                 except OSError:
                     pass
 
+    def _ensure_video_input_colorspace_safe(self, input_path: Path) -> tuple[Path, str | None]:
+        """
+        HEVC reserved/unknown 색공간 메타데이터를 BT.709로 remux 보정.
+        FFmpeg 7 filter graph 'Invalid color space' (exit 234) 원천 방어.
+        """
+        needs_fix, reason = _video_needs_colorspace_metadata_fix(input_path)
+        if not needs_fix:
+            return input_path, None
+        dest = self.temp_dir / f"csfix_{input_path.stem}.mp4"
+        logger.warning("[ColorSpaceFix] %s", reason)
+        self._append_log(f"색공간 메타데이터 보정 시작: {reason}")
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-c",
+            "copy",
+            "-bsf:v",
+            _HEVC_COLOR_METADATA_BSF,
+            str(dest),
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
+        except subprocess.TimeoutExpired:
+            logger.error("[ColorSpaceFix] remux timeout: %s", input_path.name)
+            self._append_log(f"색공간 remux 타임아웃: {input_path.name}")
+            return input_path, reason
+        if result.returncode != 0 or not dest.is_file():
+            err = (result.stderr or result.stdout or "").strip()[:400]
+            logger.error("[ColorSpaceFix] remux failed for %s: %s", input_path.name, err)
+            self._append_log(f"색공간 remux 실패 ({input_path.name}): {err}")
+            return input_path, reason
+        logger.info("[ColorSpaceFix] remux OK: %s -> %s", input_path.name, dest.name)
+        self._append_log(f"색공간 remux 완료: {input_path.name} -> BT.709")
+        return dest, reason
+
+    def _run_video_clip_ffmpeg_with_fallback(
+        self,
+        cmd: list[str],
+        *,
+        source_label: str,
+    ) -> subprocess.CompletedProcess[str]:
+        """VAAPI 1차 시도 후 필터/색공간 오류 시 CPU(libx264) 즉시 재시도."""
+        result = run_ffmpeg_with_fallback(
+            cmd,
+            timeout_sec=300,
+            logger=logger,
+            conditional_hwaccel_cuda=True,
+            source_label=source_label,
+        )
+        if result.returncode == 0:
+            return result
+        if not _should_retry_video_clip_on_cpu(result):
+            return result
+        detail = extract_ffmpeg_failure_reason(result, source_label=source_label)
+        logger.warning(
+            "[Fallback] 동영상 클립 CPU 재시도 (%s): %s",
+            source_label,
+            detail,
+        )
+        self._append_log(f"[Fallback] VAAPI/필터 오류 — CPU(libx264) 재시도: {detail}")
+        cpu_cmd = build_cpu_fallback_cmd(cmd)
+        cpu_result = subprocess.run(cpu_cmd, capture_output=True, text=True, timeout=300, check=False)
+        if cpu_result.returncode == 0:
+            logger.info("[Fallback] CPU video clip OK: %s", source_label)
+            self._append_log(f"[Fallback] CPU 재시도 성공: {source_label}")
+            return cpu_result
+        cpu_detail = extract_ffmpeg_failure_reason(cpu_result, source_label=source_label)
+        logger.error("[Fallback] CPU 재시도 실패 (%s): %s", source_label, cpu_detail)
+        self._append_log(f"[Fallback] CPU 재시도 실패: {cpu_detail}")
+        return cpu_result
+
     def _create_video_clip(
         self,
         media_file: MediaFile,
@@ -1045,6 +1201,8 @@ class FlairyVideoEngine:
         input_path = self.base_dir / media_file.file_path
         if not input_path.is_file():
             raise FileNotFoundError(f"미디어 파일 없음: {input_path}")
+        source_label = input_path.name
+        work_path, color_fix_reason = self._ensure_video_input_colorspace_safe(input_path)
 
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self._append_log(f"동영상 클립 정규화 시작: {media_file.file_path}")
@@ -1071,6 +1229,7 @@ class FlairyVideoEngine:
             apply_zoompan=False,
             media_kind="video",
         )
+        vf = _prepend_video_vf_colorspace_normalize(vf)
         vf = vf.rstrip()
         if vf.endswith("[vid]"):
             vf = vf[:-5]
@@ -1104,7 +1263,7 @@ class FlairyVideoEngine:
             "-ignore_editlist",
             "1",
             "-i",
-            str(input_path),
+            str(work_path),
             "-vf",
             vf,
             "-af",
@@ -1140,17 +1299,18 @@ class FlairyVideoEngine:
                 src_d,
                 source_trim_d,
             )
-        result = run_ffmpeg_with_fallback(
-            cmd,
-            timeout_sec=300,
-            logger=logger,
-            conditional_hwaccel_cuda=True,
-        )
+        result = self._run_video_clip_ffmpeg_with_fallback(cmd, source_label=source_label)
         if result.returncode != 0:
-            logger.error("FFmpeg video stderr: %s", result.stderr)
-            err_snippet = (result.stderr or result.stdout or "").strip()[:500]
+            detail = extract_ffmpeg_failure_reason(result, source_label=source_label)
+            logger.error(
+                "FFmpeg video clip failed (%s): exit=%s stderr=%s",
+                source_label,
+                result.returncode,
+                (result.stderr or "")[:800],
+            )
+            err_snippet = detail or (result.stderr or result.stdout or "").strip()[:500]
             self._append_log(f"FFmpeg 오류 (exit {result.returncode}): {err_snippet}")
-            raise RuntimeError(f"동영상 클립 변환 실패: {result.stderr or result.stdout}")
+            raise RuntimeError(f"동영상 클립 변환 실패: {err_snippet}")
         if not out_path.is_file():
             raise RuntimeError(f"동영상 클립이 생성되지 않음: {out_path}")
         self._enforce_clip_av_duration(out_path, target_out, use_ai)
@@ -2433,6 +2593,7 @@ class FlairyVideoEngine:
                 summary_intro = summary_intro.strip()[:80]
             try:
                 intro_path = self.temp_dir / "collage_intro.mp4"
+                collage_cover_path = self.final_dir / "collage_front.jpg"
                 render_collage_clip(
                     intro_group,
                     self.base_dir,
@@ -2441,6 +2602,7 @@ class FlairyVideoEngine:
                     title=intro_title,
                     subtitle="A Wonderful Life: Highlights",
                     duration_sec=float(intro_clip_duration_sec),
+                    share_cover_path=collage_cover_path,
                 )
                 clips.append(intro_path)
                 intro_clip_path = intro_path

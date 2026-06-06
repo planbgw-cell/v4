@@ -118,7 +118,6 @@ console.log("[Album] viewer_album inline script ran (direct URL page)");
     fetch("/api/auth/me", { credentials: "include" }).then(function (r) {
       if (r.ok) window.location.reload();
       else {
-        headerAuthBtn.textContent = "로그인";
         headerAuthBtn.onclick = onSignInClick;
       }
     });

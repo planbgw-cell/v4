@@ -44,6 +44,14 @@ _VAAPI_FAIL_PATTERNS = (
     "permission denied",
     "invalid vaapi profile",
 )
+_FILTER_GRAPH_FAIL_PATTERNS = (
+    "invalid color space",
+    "error reinitializing filters",
+    "error parsing filter",
+    "failed to inject frame into filter network",
+    "function not implemented",
+)
+_HW_ENCODER_FAIL_EXIT_CODES = frozenset({218, 234})
 
 
 def build_h264_encoder_args(*, prefer_gpu: bool, cq: int, cpu_crf: int = 25) -> list[str]:
@@ -220,6 +228,53 @@ def _strip_hwaccel_and_vaapi_device(cmd: Sequence[str]) -> list[str]:
     return out
 
 
+def build_cpu_fallback_cmd(cmd: Sequence[str]) -> list[str]:
+    """VAAPI/NVENC 명령을 libx264 CPU 경로로 변환."""
+    return _to_cpu_fallback(cmd)
+
+
+def extract_ffmpeg_failure_reason(
+    cp: subprocess.CompletedProcess[str],
+    *,
+    source_label: str | None = None,
+) -> str:
+    text = ((cp.stderr or "") + "\n" + (cp.stdout or "")).strip()
+    lowered = text.lower()
+    detail = ""
+    for line in text.splitlines():
+        ll = line.lower()
+        if any(
+            marker in ll
+            for marker in (
+                "invalid color space",
+                "error reinitializing filters",
+                "conversion failed",
+                "could not open encoder",
+            )
+        ):
+            detail = line.strip()
+            break
+    if not detail:
+        detail = text.splitlines()[-1].strip() if text else f"exit {cp.returncode}"
+    label = source_label or "ffmpeg"
+    return f"{detail} in {label}" if " in " not in detail else detail
+
+
+def _should_fallback_to_cpu(cp: subprocess.CompletedProcess[str]) -> bool:
+    if cp.returncode == 0:
+        return False
+    err = _stderr_text(cp)
+    if cp.returncode in _HW_ENCODER_FAIL_EXIT_CODES:
+        return True
+    if _contains_any(err, _FILTER_GRAPH_FAIL_PATTERNS):
+        return True
+    if _contains_any(err, _VAAPI_FAIL_PATTERNS):
+        return True
+    if _contains_any(err, _GPU_FAIL_PATTERNS):
+        return True
+    return False
+
+
 def _to_cpu_fallback(cmd: Sequence[str]) -> list[str]:
     out: list[str] = []
     i = 0
@@ -292,6 +347,8 @@ def run_ffmpeg_with_fallback(
     timeout_sec: int,
     logger: Any,
     conditional_hwaccel_cuda: bool = False,
+    source_label: str | None = None,
+    force_cpu: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     accel = get_accel_type()
     if accel not in _LOGGED_ACCEL_TYPES:
@@ -326,10 +383,23 @@ def run_ffmpeg_with_fallback(
                 cmd_hw[idx:idx] = ["-hwaccel", "cuda"]
                 break
 
+    if force_cpu:
+        cmd_cpu = _to_cpu_fallback(cmd_hw if _has_hw_encoder(cmd_hw) else cmd)
+        logger.warning(
+            "[Fallback] CPU(libx264) 강제 경로 사용%s",
+            f" source={source_label}" if source_label else "",
+        )
+        return subprocess.run(cmd_cpu, capture_output=True, text=True, timeout=timeout_sec, check=False)
+
     if accel in {"vaapi", "nvenc"} and _has_hw_encoder(cmd_hw):
         acquired = _GPU_SEMAPHORE.acquire(timeout=max(0, GPU_SEMAPHORE_TIMEOUT_SEC))
         if not acquired:
-            logger.warning("GPU_SLOT_UNAVAILABLE -> FALLBACK_CPU")
+            reason = "GPU slot unavailable"
+            logger.warning(
+                "[Fallback] %s -> CPU(libx264)%s",
+                reason,
+                f" source={source_label}" if source_label else "",
+            )
             cmd_cpu = _to_cpu_fallback(cmd_hw)
             return subprocess.run(cmd_cpu, capture_output=True, text=True, timeout=timeout_sec, check=False)
         logger.info("GPU_SLOT_ACQUIRED")
@@ -337,17 +407,20 @@ def run_ffmpeg_with_fallback(
             r = subprocess.run(cmd_hw, capture_output=True, text=True, timeout=timeout_sec, check=False)
             if r.returncode == 0:
                 return r
-            err = _stderr_text(r)
-            if accel == "vaapi" and _contains_any(err, _VAAPI_FAIL_PATTERNS):
-                logger.warning("FALLBACK_CPU due to VAAPI error")
-                return subprocess.run(_to_cpu_fallback(cmd_hw), capture_output=True, text=True, timeout=timeout_sec, check=False)
-            if accel == "nvenc" and _contains_any(err, _GPU_FAIL_PATTERNS):
-                logger.warning("FALLBACK_CPU due to GPU error")
-                return subprocess.run(_to_cpu_fallback(cmd_hw), capture_output=True, text=True, timeout=timeout_sec, check=False)
-            if _has_hw_encoder(cmd_hw):
-                logger.warning("FALLBACK_CPU due to HW encoder failure")
-                return subprocess.run(_to_cpu_fallback(cmd_hw), capture_output=True, text=True, timeout=timeout_sec, check=False)
-            return r
+            if not _should_fallback_to_cpu(r):
+                return r
+            reason = extract_ffmpeg_failure_reason(r, source_label=source_label)
+            logger.warning(
+                "[Fallback] VAAPI/필터 오류 감지 (%s). CPU(libx264) 우회 재시도를 시작합니다.",
+                reason,
+            )
+            return subprocess.run(
+                _to_cpu_fallback(cmd_hw),
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
         finally:
             _GPU_SEMAPHORE.release()
             logger.info("GPU_SLOT_RELEASED")

@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from PIL import Image
 
-from app.storage import get_project_raw_dir, get_storage_root
+from app.storage import get_project_final_dir, get_project_raw_dir, get_storage_root
 from app.utils.media_processor import IMAGE_EXTENSIONS, load_image_upright
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,25 @@ _DEFAULT_WIDTH = 1080
 
 # 리사이즈 대상(원본 확장자)
 _ALLOWED_SUFFIX = {ext.lower() for ext in IMAGE_EXTENSIONS}
+
+
+_COLLAGE_SHARE_NAMES = ("collage_front.jpg", "collage_front.png", "collage_frame.png")
+
+
+def _resolve_image_source(project_id: UUID, filename: str) -> Path | None:
+    """원본 이미지 경로: raw 우선, AI 공유 표지는 final 디렉터리도 조회."""
+    raw_dir = get_project_raw_dir(project_id)
+    src = raw_dir / filename
+    if src.is_file():
+        return src
+    if filename not in _COLLAGE_SHARE_NAMES:
+        return None
+    final_dir = get_project_final_dir(project_id)
+    for name in _COLLAGE_SHARE_NAMES:
+        candidate = final_dir / name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _safe_single_filename(name: str) -> bool:
@@ -94,17 +113,16 @@ def serve_resized_album_image(
         raise HTTPException(status_code=404, detail="Not an image file")
 
     raw_dir = get_project_raw_dir(project_id)
-    src = raw_dir / filename
+    src = _resolve_image_source(project_id, filename)
     raw_dir_exists = os.path.exists(str(raw_dir))
-    src_exists = os.path.exists(str(src))
-    if not src.is_file():
+    src_exists = bool(src and src.is_file())
+    if src is None or not src.is_file():
         logger.warning(
-            "Album image source missing project_id=%s filename=%s raw_dir=%s raw_dir_exists=%s src_path=%s src_exists=%s",
+            "Album image source missing project_id=%s filename=%s raw_dir=%s raw_dir_exists=%s src_exists=%s",
             project_id,
             filename,
             raw_dir,
             raw_dir_exists,
-            src,
             src_exists,
         )
         raise HTTPException(status_code=404, detail="Source not found")

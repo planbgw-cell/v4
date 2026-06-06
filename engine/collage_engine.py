@@ -239,6 +239,7 @@ def render_collage_clip(
     summary_text: str = "",
     title: str = "Our Precious Memories",
     subtitle: str = "",
+    share_cover_path: Path | None = None,
 ) -> Path:
     """
     인트로 전용 콜라주 1개 생성.
@@ -337,6 +338,11 @@ def render_collage_clip(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     frame_path = out_path.parent / "collage_frame.png"
     canvas.save(frame_path, "PNG")
+    if share_cover_path is not None:
+        cover_out = Path(share_cover_path)
+        cover_out.parent.mkdir(parents=True, exist_ok=True)
+        canvas.save(cover_out, "JPEG", quality=88, optimize=True)
+        logger.info("AI 콜라주 공유 표지 저장: %s", cover_out)
 
     duration = max(0.1, duration_sec)
     total_frames = max(1, int(duration * COLLAGE_FPS))

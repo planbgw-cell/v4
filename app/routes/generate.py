@@ -64,12 +64,16 @@ def _is_ai_mode(project) -> bool:
 
 def _classify_failure(message: str) -> str:
     m = (message or "").lower()
+    if "invalid color space" in m:
+        return "FFMPEG_COLORSPACE_ERROR"
     if "vaapi" in m and ("permission denied" in m or "권한" in m):
         return "VAAPI_PERMISSION"
     if "out of memory" in m or "cannot allocate memory" in m:
         return "OOM"
     if "ffmpeg" in m and ("filter" in m or "invalid argument" in m):
         return "FFMPEG_FILTER_ERROR"
+    if "[fallback]" in m and "cpu" in m:
+        return "FFMPEG_HW_FALLBACK"
     if "gpu" in m or "nvenc" in m or "vaapi" in m:
         return "GPU_ERROR"
     if "database" in m or "sql" in m:
@@ -102,6 +106,7 @@ def _log_admin_render_failure(
                     "task_id": task_id,
                     "error_code": _classify_failure(message),
                     "message": (message or "")[:1200],
+                    "detail": (message or "")[:1200],
                     "accel_mode": get_accel_type().upper(),
                     "merge_mode": (merge_mode_request or get_highlight_merge_mode() or "").upper(),
                 },
