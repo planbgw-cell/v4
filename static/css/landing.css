@@ -62,6 +62,20 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #3b357a;
         }
+        /* 3D 체험 영역: 페이지 넘김 시 잘림 방지 */
+        .sim-album-stage {
+            min-height: 560px;
+            padding-bottom: 2.5rem;
+        }
+        .sim-album-stage .book-container {
+            overflow: visible;
+        }
+        @media (min-width: 768px) {
+            .sim-album-stage {
+                min-height: 640px;
+            }
+        }
+
         /* Before/After Drag Slider Overlay */
         .slider-handle::after {
             content: '';

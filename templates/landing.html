@@ -137,92 +137,47 @@
                 </div>
             </div>
 
-            <!-- 3D 앨범 실물 목업 우측 영역 -->
-            <div class="lg:col-span-6 flex flex-col items-center justify-center relative">
-                <!-- 비주얼 기둥 백그라운드 효과 -->
-                <div class="absolute w-[360px] h-[360px] md:w-[480px] md:h-[480px] rounded-full border border-flairy-primary/10 animate-spin-slow"></div>
-                <div class="absolute w-[240px] h-[240px] md:w-[320px] md:h-[320px] rounded-full border border-flairy-secondary/20"></div>
+            <!-- AI 보정 비주얼 비교 (히어로 우측) -->
+            <div class="lg:col-span-6 flex flex-col justify-center">
+                <div class="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden">
+                    <div class="space-y-2 mb-6">
+                        <h3 class="text-lg font-bold text-white">AI 아티스틱 보정 엔진</h3>
+                        <p class="text-xs text-flairy-muted">
+                            단순한 플랫 사진을 Flairy만의 입체 광학 매커니즘과 감성 필터가 적용된 고차원 예술작품으로 연출합니다. 슬라이더를 밀어 품질 차이를 감상해 보세요.
+                        </p>
+                    </div>
 
-                <!-- 인터랙티브 체험용 플립북 -->
-                <div class="book-container py-10 relative">
-                    <div id="hero-book" class="book shadow-2xl">
-                        <!-- COVER PAGE -->
-                        <div class="page z-40" id="p1">
-                            <div class="page-face page-front bg-gradient-to-br from-[#1e1435] to-[#0d091e] border-r border-white/10 flex flex-col justify-between p-8">
-                                <div class="flex justify-between items-center">
-                                    <div class="text-xs text-flairy-secondary tracking-widest uppercase font-semibold">PREMIUM FLIP</div>
-                                    <span class="text-flairy-secondary">✦</span>
-                                </div>
-                                <div class="space-y-4">
-                                    <h3 class="text-2xl font-bold text-white tracking-wide leading-tight">우리 둘의 특별한 오늘 하루</h3>
-                                    <p class="text-xs text-flairy-muted">Created at Flairy Studio</p>
-                                </div>
-                                <div class="h-32 rounded bg-cover bg-center border border-white/5" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600')"></div>
-                                <div class="flex justify-between items-center text-[10px] text-flairy-muted border-t border-white/10 pt-4">
-                                    <span>FLAIRY CO.</span>
-                                    <span>COVER</span>
-                                </div>
-                            </div>
-                            <div class="page-face page-back bg-[#141226] p-6 flex flex-col justify-between text-xs text-flairy-muted">
-                                <div class="h-full flex flex-col justify-between">
-                                    <p class="leading-relaxed">어두운 밤하늘 속 별빛처럼 환하게 빛나던 너의 눈동자, 우리의 모든 시작은 작은 미소 하나로부터 피어났습니다.</p>
-                                    <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600')"></div>
-                                </div>
-                            </div>
+                    <div class="relative w-full h-[320px] md:h-[380px] rounded-xl overflow-hidden select-none" id="slider-container">
+                        <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200')">
+                            <span class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">BEFORE (원본 파일)</span>
                         </div>
-
-                        <!-- PAGE 2 -->
-                        <div class="page z-30" id="p2">
-                            <div class="page-face page-front bg-[#141226] p-6 flex flex-col justify-between text-xs text-flairy-muted">
-                                <div class="h-full flex flex-col justify-between">
-                                    <div class="h-2/3 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=600')"></div>
-                                    <p class="leading-relaxed pt-3">싱그러운 햇살 아래 흩날리던 하얀 바람, 그 속에 가만히 남겨두고 싶었던 우리 둘만의 속삭임.</p>
-                                </div>
-                            </div>
-                            <div class="page-face page-back bg-[#18152e] p-6 flex flex-col justify-between">
-                                <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
-                                    <p class="leading-relaxed">바람에 쓸리던 파도 소리조차 음악이 되었던 그 여름날, 차가운 에이드 한 모금과 끝없는 바다를 배경 삼아 나눈 대화들.</p>
-                                    <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=600')"></div>
-                                </div>
-                            </div>
+                        <div class="absolute inset-0 bg-cover bg-center transition-all pointer-events-none filter brightness-110 saturate-105" id="after-image" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200'); width: 50%; filter: sepia(0.2) contrast(1.1) brightness(1.05) hue-rotate(-10deg);">
+                            <span class="absolute bottom-4 right-4 bg-flairy-primary/80 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">AFTER (FLAIRY AI 보정본)</span>
                         </div>
-
-                        <!-- PAGE 3 (가상 업로드용 슬롯 포함) -->
-                        <div class="page z-20" id="p3">
-                            <div class="page-face page-front bg-[#18152e] p-6 flex flex-col justify-between">
-                                <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
-                                    <div id="sim-photo-holder" class="h-2/3 rounded bg-cover bg-center border-2 border-dashed border-flairy-secondary/30 flex flex-col items-center justify-center text-center p-4 transition-all duration-300" style="background-image: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=600')">
-                                        <div id="sim-upload-prompt" class="bg-[#05030e]/80 backdrop-blur-md px-3 py-2 rounded-lg border border-white/10">
-                                            <p class="text-[10px] text-white font-medium">당신의 사진을 아래에서 적용해 보세요</p>
-                                        </div>
-                                    </div>
-                                    <p class="leading-relaxed pt-3 text-center font-serif italic text-flairy-secondary">"Our beautiful memories never fade away."</p>
-                                </div>
-                            </div>
-                            <div class="page-face page-back bg-gradient-to-bl from-[#0d091e] to-[#1e1435] border-l border-white/10 flex flex-col justify-between p-8 text-right">
-                                <div class="flex justify-between items-center flex-row-reverse">
-                                    <div class="text-xs text-flairy-accent tracking-widest uppercase font-semibold">THE END</div>
-                                    <span class="text-flairy-accent">✦</span>
-                                </div>
-                                <div class="space-y-2">
-                                    <h4 class="text-lg font-bold text-white leading-tight font-serif">우리의 이야기는<br>계속됩니다.</h4>
-                                    <p class="text-[11px] text-flairy-muted">FLAIRY MEMORIES</p>
-                                </div>
-                                <button onclick="navigateToApp()" class="px-4 py-2 bg-white/5 border border-white/10 hover:border-flairy-primary/50 text-[11px] text-white rounded transition-colors self-end mt-4">실제 앨범 제작하기</button>
+                        <div class="absolute top-0 bottom-0 left-1/2 w-1 bg-white cursor-ew-resize slider-handle flex items-center justify-center" id="drag-bar">
+                            <div class="w-8 h-8 rounded-full bg-white text-flairy-bg shadow-lg flex items-center justify-center border border-flairy-primary/20 pointer-events-none">
+                                <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- 앨범 넘기기 제어기 -->
-                <div class="flex items-center space-x-6 mt-2 relative z-20 bg-white/[0.02] border border-white/[0.05] rounded-full px-5 py-2.5 backdrop-blur-sm">
-                    <button onclick="prevPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
-                        <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                    </button>
-                    <span id="page-indicator" class="text-xs font-mono font-medium tracking-widest text-flairy-muted">COVER / PAGE 1</span>
-                    <button onclick="nextPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
-                        <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                    </button>
+                    <!-- 필터 필름 연출 (AI 보정 슬라이더 바로 아래) -->
+                    <div class="space-y-3 mt-6 pt-4 border-t border-white/[0.04]">
+                        <label class="text-xs font-semibold text-flairy-muted tracking-wider uppercase block">필터 필름 연출</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button type="button" onclick="setSimFilter('vintage')" id="btn-filter-vintage" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">클래식 빈티지</button>
+                            <button type="button" onclick="setSimFilter('noir')" id="btn-filter-noir" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">시네마 노아르</button>
+                            <button type="button" onclick="setSimFilter('sunset')" id="btn-filter-sunset" class="py-2 text-[11px] font-bold rounded-lg bg-flairy-primary border border-flairy-primary/30 text-white transition-all">선셋 아우라</button>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center mt-4 text-xs text-flairy-muted">
+                        <span>가족 앨범, 프로포즈 기획 최적화 연출</span>
+                        <span class="text-flairy-accent flex items-center space-x-1">
+                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                            <span>클릭 한 번으로 3D 보정 완성</span>
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -238,77 +193,118 @@
                 </p>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-stretch max-w-5xl mx-auto">
-                <!-- 드래그 앤 드롭 업로드존 -->
-                <div id="sim-upload-zone" class="lg:col-span-5 bg-white/[0.02] border border-white/[0.05] hover:border-flairy-secondary/40 rounded-2xl p-8 flex flex-col justify-between space-y-6 relative overflow-hidden group transition-all duration-300 cursor-pointer">
-                    <div class="absolute -top-12 -right-12 w-24 h-24 bg-flairy-primary/10 rounded-full blur-xl group-hover:bg-flairy-primary/20 transition-all duration-500"></div>
-                    
-                    <div class="space-y-4">
-                        <div class="w-12 h-12 rounded-xl bg-flairy-primary/10 border border-flairy-primary/20 flex items-center justify-center text-flairy-primary">
-                            <i data-lucide="image-plus" class="w-6 h-6"></i>
-                        </div>
-                        <h3 class="text-lg font-bold text-white">체험용 가상 업로드</h3>
-                        <p class="text-xs text-flairy-muted leading-relaxed">
-                            소장용 이미지를 업로드해보세요. 마케팅 체험 목적으로, 서버로 전송되지 않고 사용자의 기기 브라우저 내에서만 안전하게 렌더링됩니다.
-                        </p>
+            <div class="flex flex-col gap-10 max-w-3xl mx-auto">
+                <!-- 3D 앨범 실시간 미리보기 (상단) -->
+                <div class="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 md:p-10 flex flex-col items-center justify-center relative overflow-visible sim-album-stage">
+                    <div class="absolute w-[280px] h-[280px] md:w-[360px] md:h-[360px] rounded-full border border-flairy-primary/10 animate-spin-slow pointer-events-none"></div>
+                    <div class="absolute w-[180px] h-[180px] md:w-[240px] md:h-[240px] rounded-full border border-flairy-secondary/20 pointer-events-none"></div>
+
+                    <div class="relative z-10 w-full text-center mb-4">
+                        <h3 class="text-lg font-bold text-white">3D 앨범 실시간 미리보기</h3>
+                        <p class="text-xs text-flairy-muted mt-1">아래에서 사진을 올리면 바로 앨범에 반영됩니다</p>
                     </div>
 
-                    <!-- 실제 가상 인풋 드롭존 내부 상자 -->
-                    <div class="border border-dashed border-white/10 group-hover:border-flairy-secondary/50 rounded-xl p-6 text-center bg-[#05030e]/40 transition-all duration-300">
+                    <div class="book-container py-4 relative z-10">
+                        <div id="hero-book" class="book shadow-2xl">
+                            <div class="page z-40" id="p1">
+                                <div class="page-face page-front bg-gradient-to-br from-[#1e1435] to-[#0d091e] border-r border-white/10 flex flex-col justify-between p-8">
+                                    <div class="flex justify-between items-center">
+                                        <div class="text-xs text-flairy-secondary tracking-widest uppercase font-semibold">PREMIUM FLIP</div>
+                                        <span class="text-flairy-secondary">✦</span>
+                                    </div>
+                                    <div class="space-y-4">
+                                        <h3 class="text-2xl font-bold text-white tracking-wide leading-tight">우리 둘의 특별한 오늘 하루</h3>
+                                        <p class="text-xs text-flairy-muted">Created at Flairy Studio</p>
+                                    </div>
+                                    <div class="h-32 rounded bg-cover bg-center border border-white/5" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600')"></div>
+                                    <div class="flex justify-between items-center text-[10px] text-flairy-muted border-t border-white/10 pt-4">
+                                        <span>FLAIRY CO.</span>
+                                        <span>COVER</span>
+                                    </div>
+                                </div>
+                                <div class="page-face page-back bg-[#141226] p-6 flex flex-col justify-between text-xs text-flairy-muted">
+                                    <div class="h-full flex flex-col justify-between">
+                                        <p class="leading-relaxed">어두운 밤하늘 속 별빛처럼 환하게 빛나던 너의 눈동자, 우리의 모든 시작은 작은 미소 하나로부터 피어났습니다.</p>
+                                        <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600')"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="page z-30" id="p2">
+                                <div class="page-face page-front bg-[#141226] p-6 flex flex-col justify-between text-xs text-flairy-muted">
+                                    <div class="h-full flex flex-col justify-between">
+                                        <div class="h-2/3 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=600')"></div>
+                                        <p class="leading-relaxed pt-3">싱그러운 햇살 아래 흩날리던 하얀 바람, 그 속에 가만히 남겨두고 싶었던 우리 둘만의 속삭임.</p>
+                                    </div>
+                                </div>
+                                <div class="page-face page-back bg-[#18152e] p-6 flex flex-col justify-between">
+                                    <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
+                                        <p class="leading-relaxed">바람에 쓸리던 파도 소리조차 음악이 되었던 그 여름날, 차가운 에이드 한 모금과 끝없는 바다를 배경 삼아 나눈 대화들.</p>
+                                        <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=600')"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="page z-20" id="p3">
+                                <div class="page-face page-front bg-[#18152e] p-6 flex flex-col justify-between">
+                                    <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
+                                        <div id="sim-photo-holder" class="h-2/3 rounded bg-cover bg-center border-2 border-dashed border-flairy-secondary/30 flex flex-col items-center justify-center text-center p-4 transition-all duration-300" style="background-image: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=600')">
+                                            <div id="sim-upload-prompt" class="bg-[#05030e]/80 backdrop-blur-md px-3 py-2 rounded-lg border border-white/10">
+                                                <p class="text-[10px] text-white font-medium">아래에서 사진을 업로드해 보세요</p>
+                                            </div>
+                                        </div>
+                                        <p class="leading-relaxed pt-3 text-center font-serif italic text-flairy-secondary">"Our beautiful memories never fade away."</p>
+                                    </div>
+                                </div>
+                                <div class="page-face page-back bg-gradient-to-bl from-[#0d091e] to-[#1e1435] border-l border-white/10 flex flex-col justify-between p-8 text-right">
+                                    <div class="flex justify-between items-center flex-row-reverse">
+                                        <div class="text-xs text-flairy-accent tracking-widest uppercase font-semibold">THE END</div>
+                                        <span class="text-flairy-accent">✦</span>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <h4 class="text-lg font-bold text-white leading-tight font-serif">우리의 이야기는<br>계속됩니다.</h4>
+                                        <p class="text-[11px] text-flairy-muted">FLAIRY MEMORIES</p>
+                                    </div>
+                                    <button onclick="navigateToApp()" class="px-4 py-2 bg-white/5 border border-white/10 hover:border-flairy-primary/50 text-[11px] text-white rounded transition-colors self-end mt-4">실제 앨범 제작하기</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-6 mt-2 relative z-20 bg-white/[0.02] border border-white/[0.05] rounded-full px-5 py-2.5 backdrop-blur-sm">
+                        <button onclick="prevPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
+                            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                        </button>
+                        <span id="page-indicator" class="text-xs font-mono font-medium tracking-widest text-flairy-muted">COVER / PAGE 1</span>
+                        <button onclick="nextPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 드래그 앤 드롭 업로드존 (하단) -->
+                <div id="sim-upload-zone" class="bg-white/[0.02] border border-white/[0.05] hover:border-flairy-secondary/40 rounded-2xl p-8 flex flex-col space-y-6 relative overflow-hidden group transition-all duration-300 cursor-pointer">
+                    <div class="absolute -top-12 -right-12 w-24 h-24 bg-flairy-primary/10 rounded-full blur-xl group-hover:bg-flairy-primary/20 transition-all duration-500"></div>
+
+                    <div class="flex items-start space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-flairy-primary/10 border border-flairy-primary/20 flex items-center justify-center text-flairy-primary shrink-0">
+                            <i data-lucide="image-plus" class="w-6 h-6"></i>
+                        </div>
+                        <div class="space-y-1 min-w-0">
+                            <h3 class="text-lg font-bold text-white">체험용 가상 업로드</h3>
+                            <p class="text-xs text-flairy-muted leading-relaxed">
+                                소장용 이미지를 업로드해보세요. 서버로 전송되지 않고 브라우저 내에서만 안전하게 렌더링됩니다.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="border border-dashed border-white/10 group-hover:border-flairy-secondary/50 rounded-xl p-8 text-center bg-[#05030e]/40 transition-all duration-300">
                         <input type="file" id="sim-image-input" accept="image/*" class="hidden">
                         <div class="flex flex-col items-center justify-center space-y-2">
                             <i data-lucide="cloud-lightning" class="w-8 h-8 text-flairy-secondary animate-bounce"></i>
                             <p class="text-xs text-white font-medium">이곳을 클릭하거나 이미지 드래그</p>
                             <p class="text-[10px] text-flairy-muted">PNG, JPG 파일 지원</p>
                         </div>
-                    </div>
-
-                    <!-- 실시간 톤 연출 필터 선택기 -->
-                    <div class="space-y-3" onclick="event.stopPropagation();">
-                        <label class="text-xs font-semibold text-flairy-muted tracking-wider uppercase block">필터 필름 연출</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="setSimFilter('vintage')" id="btn-filter-vintage" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">클래식 빈티지</button>
-                            <button type="button" onclick="setSimFilter('noir')" id="btn-filter-noir" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">시네마 노아르</button>
-                            <button type="button" onclick="setSimFilter('sunset')" id="btn-filter-sunset" class="py-2 text-[11px] font-bold rounded-lg bg-flairy-primary border border-flairy-primary/30 text-white transition-all">선셋 아우라</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AI 보정 비주얼 비교 (Before/After Slider) -->
-                <div class="lg:col-span-7 bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 flex flex-col justify-between">
-                    <div class="space-y-2 mb-6">
-                        <h3 class="text-lg font-bold text-white">AI 아티스틱 보정 엔진</h3>
-                        <p class="text-xs text-flairy-muted">
-                            단순한 플랫 사진을 Flairy만의 입체 광학 매커니즘과 감성 필터가 적용된 고차원 예술작품으로 연출합니다. 슬라이더를 밀어 품질 차이를 감상해 보세요.
-                        </p>
-                    </div>
-
-                    <!-- Slider Container -->
-                    <div class="relative w-full h-[320px] rounded-xl overflow-hidden select-none" id="slider-container">
-                        <!-- Before Image (Original) -->
-                        <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200')">
-                            <span class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">BEFORE (원본 파일)</span>
-                        </div>
-                        
-                        <!-- After Image (Enhanced) -->
-                        <div class="absolute inset-0 bg-cover bg-center transition-all pointer-events-none filter brightness-110 saturate-105" id="after-image" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200'); width: 50%; filter: sepia(0.2) contrast(1.1) brightness(1.05) hue-rotate(-10deg);">
-                            <span class="absolute bottom-4 right-4 bg-flairy-primary/80 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">AFTER (FLAIRY AI 보정본)</span>
-                        </div>
-
-                        <!-- Drag Bar -->
-                        <div class="absolute top-0 bottom-0 left-1/2 w-1 bg-white cursor-ew-resize slider-handle flex items-center justify-center" id="drag-bar">
-                            <div class="w-8 h-8 rounded-full bg-white text-flairy-bg shadow-lg flex items-center justify-center border border-flairy-primary/20 pointer-events-none">
-                                <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-between items-center mt-6 text-xs text-flairy-muted pt-4 border-t border-white/[0.04]">
-                        <span>가족 앨범, 프로포즈 기획 최적화 연출</span>
-                        <span class="text-flairy-accent flex items-center space-x-1">
-                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
-                            <span>클릭 한 번으로 3D 보정 완성</span>
-                        </span>
                     </div>
                 </div>
             </div>
