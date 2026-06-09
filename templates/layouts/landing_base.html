@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="flairy-public-origin" content="{{ public_base_url }}">
+  <title>{% block title %}Flairy (플레어리) - AI 하이라이트 영상 및 디지털 앨범 서비스{% endblock %}</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,500&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            flairy: {
+              bg: '#05030e',
+              card: '#0c0a1a',
+              border: '#1e1a3a',
+              primary: '#6d57ff',
+              secondary: '#a855f7',
+              accent: '#f43f5e',
+              text: '#f3f4f6',
+              muted: '#9ca3af',
+            }
+          },
+          boxShadow: {
+            'glow-primary': '0 0 25px -5px rgba(109, 87, 255, 0.4)',
+            'glow-secondary': '0 0 25px -5px rgba(168, 85, 247, 0.4)',
+            'glow-accent': '0 0 20px -5px rgba(244, 63, 94, 0.3)',
+          },
+          animation: {
+            'float-slow': 'float 8s ease-in-out infinite',
+            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'spin-slow': 'spin 12s linear infinite',
+            'bounce-slow': 'bounce 3s ease-in-out infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+              '50%': { transform: 'translateY(-15px) rotate(3deg)' },
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="/static/css/landing.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-[#05030e] text-flairy-text font-sans selection:bg-flairy-primary/30 selection:text-white overflow-x-hidden">
+  {% block content %}{% endblock %}
+  <script>
+  (function () {
+    if (window.__flairyAnalyticsInit) return;
+    window.__flairyAnalyticsInit = true;
+
+    var STORAGE_KEY = "flairy_session_id";
+    var COOKIE_KEY = "flairy_analytics_sid";
+    var COLLECT_URL = "/api/v1/analytics/collect";
+    var STAY_URL = "/api/v1/analytics/stay-time";
+
+    function makeSessionId() {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+      return "sid-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+    }
+    function getSessionId() {
+      var sid = "";
+      try { sid = (window.localStorage.getItem(STORAGE_KEY) || "").trim(); } catch (e) {}
+      if (!sid) {
+        sid = makeSessionId();
+        try { window.localStorage.setItem(STORAGE_KEY, sid); } catch (e2) {}
+      }
+      document.cookie = COOKIE_KEY + "=" + encodeURIComponent(sid) + "; path=/; max-age=31536000; samesite=lax";
+      return sid;
+    }
+    function getUtm() {
+      var p = new URLSearchParams(window.location.search || "");
+      return {
+        utm_source: p.get("utm_source") || "",
+        utm_medium: p.get("utm_medium") || "",
+        utm_campaign: p.get("utm_campaign") || "",
+        utm_term: p.get("utm_term") || "",
+        utm_content: p.get("utm_content") || "",
+      };
+    }
+    function collect(sid) {
+      var utm = getUtm();
+      var payload = {
+        session_id: sid,
+        referrer_url: document.referrer || "",
+        landing_page: window.location.pathname + window.location.search,
+        utm_source: utm.utm_source,
+        utm_medium: utm.utm_medium,
+        utm_campaign: utm.utm_campaign,
+        utm_term: utm.utm_term,
+        utm_content: utm.utm_content
+      };
+      fetch(COLLECT_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Flairy-Session-Id": sid },
+        body: JSON.stringify(payload),
+      }).catch(function () {});
+    }
+
+    var sid = getSessionId();
+    collect(sid);
+
+    var activeStart = Date.now();
+    function flushStay(useBeacon) {
+      if (!activeStart) return;
+      var now = Date.now();
+      var seconds = Math.floor((now - activeStart) / 1000);
+      activeStart = 0;
+      if (seconds <= 0) return;
+      var body = JSON.stringify({ session_id: sid, stay_duration: seconds });
+      if (useBeacon && navigator.sendBeacon) {
+        var blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(STAY_URL, blob);
+        return;
+      }
+      fetch(STAY_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Flairy-Session-Id": sid },
+        body: body,
+        keepalive: true,
+      }).catch(function () {});
+    }
+    function resumeStay() {
+      if (!activeStart) activeStart = Date.now();
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        flushStay(false);
+      } else if (document.visibilityState === "visible") {
+        resumeStay();
+      }
+    });
+    window.addEventListener("pagehide", function () {
+      flushStay(true);
+    });
+  })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

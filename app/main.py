@@ -260,7 +260,28 @@ def _is_debug_admin_email(email: str | None) -> bool:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, current_user=Depends(get_current_user_optional)):
+async def landing_page(request: Request, current_user=Depends(get_current_user_optional)):
+    db = SessionLocal()
+    try:
+        latest_notice = (
+            db.query(Notice)
+            .order_by(Notice.is_pinned.desc(), Notice.created_at.desc())
+            .first()
+        )
+        return templates.TemplateResponse(
+            "landing.html",
+            {
+                "request": request,
+                "current_user": current_user,
+                "latest_notice": latest_notice,
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/create", response_class=HTMLResponse)
+async def create_page(request: Request, current_user=Depends(get_current_user_optional)):
     is_admin = bool(current_user and _is_debug_admin_email(getattr(current_user, "email", None)))
     db = SessionLocal()
     try:
@@ -270,7 +291,7 @@ async def index(request: Request, current_user=Depends(get_current_user_optional
             .first()
         )
         return templates.TemplateResponse(
-            "index.html",
+            "create.html",
             {
                 "request": request,
                 "current_user": current_user,

@@ -1,0 +1,40 @@
+<nav class="fixed {% if latest_notice %}top-10{% else %}top-0{% endif %} left-0 w-full z-50 bg-[#05030e]/70 backdrop-blur-md border-b border-white/[0.04] transition-all duration-300">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+    <a href="/" class="flex items-center space-x-2 group shrink-0">
+      <span class="text-xl sm:text-2xl font-bold font-sans text-white tracking-tight transition-transform duration-300 group-hover:scale-[1.02]">flairy</span>
+      <span class="text-lg sm:text-xl text-flairy-secondary transition-all duration-300 group-hover:rotate-45 group-hover:scale-110">✦</span>
+    </a>
+
+    <div class="hidden md:flex items-center space-x-8 lg:space-x-10 text-sm font-medium text-flairy-muted">
+      <a href="#features" class="hover:text-white transition-colors duration-200">기능 소개</a>
+      <a href="#simulator" class="hover:text-white transition-colors duration-200">3D 미리보기</a>
+      <a href="#theme" class="hover:text-white transition-colors duration-200">테마 갤러리</a>
+      <a href="#pricing" class="hover:text-white transition-colors duration-200">무료 시작</a>
+      <a href="/qna" class="hover:text-white transition-colors duration-200">Q&amp;A</a>
+    </div>
+
+    <div class="flex items-center space-x-2 sm:space-x-4 shrink-0">
+      {% if current_user %}
+      <a href="/mypage" class="hidden sm:inline-flex px-4 py-2 rounded-full text-xs font-semibold tracking-wider text-white bg-white/[0.04] border border-white/10 hover:border-flairy-primary/50 transition-all duration-300">
+        My Album
+      </a>
+      <a href="/auth/logout" class="hidden sm:inline-flex px-4 py-2 rounded-full text-xs font-semibold tracking-wider text-white bg-white/[0.04] border border-white/10 hover:border-flairy-primary/50 transition-all duration-300">
+        Sign Out
+      </a>
+      {% else %}
+      <button type="button" onclick="navigateToApp()" class="relative group overflow-hidden px-3 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs font-semibold tracking-wider text-white bg-white/[0.04] border border-white/10 hover:border-flairy-primary/50 transition-all duration-300">
+        <span class="relative z-10">Sign In</span>
+        <div class="absolute inset-0 bg-gradient-to-r from-flairy-primary/10 to-flairy-secondary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      </button>
+      {% endif %}
+      <button type="button" onclick="navigateToApp()" class="relative group overflow-hidden px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-xs font-bold tracking-wider text-white bg-gradient-to-r from-flairy-primary to-flairy-secondary shadow-glow-primary hover:shadow-glow-secondary hover:scale-[1.03] transition-all duration-300">
+        <span class="relative z-10 flex items-center space-x-1">
+          <span class="hidden xs:inline">Create Album</span>
+          <span class="xs:hidden">만들기</span>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5"></i>
+        </span>
+        <div class="absolute inset-0 bg-gradient-to-r from-flairy-secondary to-flairy-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+      </button>
+    </div>
+  </div>
+</nav>
