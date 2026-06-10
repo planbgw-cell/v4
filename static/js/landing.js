@@ -305,7 +305,7 @@
                         // 가상 이미지 적용 및 에러 방지
                         simPhotoHolder.style.backgroundImage = `url('${imgUrl}')`;
                         simUploadPrompt.innerHTML = `
-                            <div class="bg-[#05030e]/90 backdrop-blur-md px-3 py-2 rounded-lg border border-emerald-500/30">
+                            <div class="bg-flairy-bg/90 backdrop-blur-md px-3 py-2 rounded-lg border border-emerald-500/30">
                                 <p class="text-[10px] text-emerald-400 font-bold flex items-center justify-center space-x-1">
                                     <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                                     <span>3D 앨범 가상 적용 성공!</span>

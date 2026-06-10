@@ -53,14 +53,14 @@
             width: 8px;
         }
         ::-webkit-scrollbar-track {
-            background: #05030e;
+            background: #33303c;
         }
         ::-webkit-scrollbar-thumb {
-            background: #25214a;
+            background: #4f4a6c;
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #3b357a;
+            background: #655e93;
         }
         /* 3D 체험 영역: 페이지 넘김 시 잘림 방지 */
         .sim-album-stage {
