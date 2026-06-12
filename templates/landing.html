@@ -1,5 +1,5 @@
 {% extends "layouts/landing_base.html" %}
-{% block title %}Flairy - 추억을 넘기는 감동, 3D 디지털 사진첩{% endblock %}
+{% block title %}Flairy - 영원히 잊히지 않을 감동, 3D 디지털 사진첩{% endblock %}
 {% block head %}
   <meta name="description" content="사진과 동영상을 업로드하면 AI가 자동으로 배경음악(BGM)과 싱크를 맞춘 감동적인 하이라이트 영상과 디지털 앨범을 만들어 드립니다.">
   <meta name="keywords" content="Flairy, 플레어리, 디지털 앨범, 하이라이트 영상, AI 영상 제작, 동영상 자동 편집, 추억 저장, 스마트 앨범">
@@ -27,629 +27,559 @@
   <a href="/notice" class="text-[10px] sm:text-xs text-gray-400 hover:text-white shrink-0 ml-4">전체보기 &rarr;</a>
 </div>
 {% endif %}
-<!-- 포탈 트랜지션 효과용 오버레이 (페이지 전환 시 작동) -->
-    <div id="portal-overlay" class="fixed inset-0 bg-flairy-bg z-[9999] opacity-0 pointer-events-none transition-all duration-1000 flex flex-col items-center justify-center">
+<!-- 포탈 트랜지션 효과용 백그라운드 레이어 (톤업된 네이비 적용) -->
+    <div id="portal-overlay" class="fixed inset-0 bg-[#151E3D] z-[9999] opacity-0 pointer-events-none transition-all duration-1000 flex flex-col items-center justify-center">
         <div class="relative flex items-center justify-center">
-            <!-- 화려한 로딩 아우라 -->
-            <div class="absolute w-40 h-40 rounded-full bg-gradient-to-r from-flairy-primary via-flairy-secondary to-flairy-accent opacity-30 blur-2xl animate-pulse"></div>
-            <div class="absolute w-28 h-28 border-4 border-t-flairy-primary border-r-transparent border-b-flairy-secondary border-l-transparent rounded-full animate-spin-slow"></div>
-            <!-- 로고 -->
-            <div class="z-10 flex items-center space-x-2 text-3xl font-bold tracking-wider font-sans text-white">
-                <span class="font-light">flairy</span>
-                <span class="text-flairy-secondary animate-pulse">✦</span>
+            <div class="absolute w-40 h-40 rounded-full bg-flairy-accent/20 opacity-35 blur-2xl animate-pulse"></div>
+            <div class="absolute w-28 h-28 border-4 border-t-flairy-accent border-r-transparent border-b-indigo-300 border-l-transparent rounded-full animate-spin"></div>
+            <div class="z-10 flex flex-col items-center space-y-2 text-white">
+                <span class="font-serif text-3xl font-extrabold tracking-wider italic text-indigo-100">flairy</span>
+                <span class="text-xs tracking-widest text-indigo-300 font-light animate-pulse">MEMORIES IN 3D</span>
             </div>
         </div>
-        <p class="text-flairy-muted mt-6 text-sm tracking-widest font-light animate-pulse">새로운 추억의 공간을 생성하고 있습니다...</p>
+        <p class="text-slate-300 mt-8 text-[11px] tracking-widest font-light animate-pulse">안전한 감성 클라우드 렌더러 로딩 중...</p>
     </div>
 
-    <!-- 네비게이션 바 -->
-    <nav class="fixed {% if latest_notice %}top-10{% else %}top-0{% endif %} left-0 w-full z-50 bg-flairy-bg/70 backdrop-blur-md border-b border-white/[0.04] transition-all duration-300">
+    <!-- [요구사항 3] 상단 탭 고정 및 미드나잇 소프트 네이비 처리 -->
+    <nav class="fixed {% if latest_notice %}top-10{% else %}top-0{% endif %} left-0 w-full z-50 bg-[#151E3D] border-b border-white/10 transition-all duration-300 shadow-md">
         <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-            <!-- 로고 -->
+            <!-- 로고 (명품 세리프의 품격 유지) -->
             <a href="/" class="flex items-center space-x-2 group">
-                <span class="text-2xl font-bold font-sans text-white tracking-tight transition-transform duration-300 group-hover:scale-[1.02]">flairy</span>
-                <span class="text-xl text-flairy-secondary transition-all duration-300 group-hover:rotate-45 group-hover:scale-110">✦</span>
+                <span class="font-serif text-2xl font-extrabold text-white tracking-tight italic transition-all duration-300 group-hover:text-indigo-300">flairy</span>
+                <span class="text-base text-indigo-300 transition-transform duration-500 group-hover:rotate-180">✦</span>
             </a>
             
-            <!-- 메뉴 (데스크탑) -->
-            <div class="hidden md:flex items-center space-x-10 text-sm font-medium text-flairy-muted">
-                <a href="#features" class="hover:text-white transition-colors duration-200">기능 소개</a>
-                <a href="#simulator" class="hover:text-white transition-colors duration-200">3D 미리보기</a>
-                <a href="#theme" class="hover:text-white transition-colors duration-200">테마 갤러리</a>
-                <a href="#beta-event" class="hover:text-white transition-colors duration-200">베타 런칭 이벤트</a>
+            <!-- 메뉴 탭 -->
+            <div class="hidden md:flex items-center space-x-10 text-xs font-semibold uppercase tracking-wider text-slate-200">
+                <a href="#features" class="hover:text-indigo-300 transition-colors duration-200">기능 소개</a>
+                <a href="#simulator" class="hover:text-indigo-300 transition-colors duration-200">3D 미리보기</a>
+                <a href="#theme" class="hover:text-indigo-300 transition-colors duration-200">테마 갤러리</a>
+                <a href="#beta-event" class="hover:text-indigo-300 transition-colors duration-200">베타 런칭 이벤트</a>
             </div>
 
-            <!-- CTA 버튼 -->
+            <!-- 네비게이션 액션 그룹 -->
             <div class="flex items-center space-x-4">
-                <button onclick="navigateToApp()" class="relative group overflow-hidden px-5 py-2.5 rounded-full text-xs font-semibold tracking-wider text-white bg-white/[0.04] border border-white/10 hover:border-flairy-primary/50 transition-all duration-300">
-                    <span class="relative z-10 flex items-center space-x-1">
-                        <span>로그인</span>
-                    </span>
-                    <div class="absolute inset-0 bg-gradient-to-r from-flairy-primary/10 to-flairy-secondary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                <button onclick="navigateToApp()" class="px-5 py-2.5 rounded-full text-xs font-bold tracking-wider text-slate-200 hover:text-white transition-all">
+                    로그인
                 </button>
-                <button onclick="navigateToApp()" class="relative group overflow-hidden px-6 py-2.5 rounded-full text-xs font-bold tracking-wider text-white bg-gradient-to-r from-flairy-primary to-flairy-secondary shadow-glow-primary hover:shadow-glow-secondary hover:scale-[1.03] transition-all duration-300">
-                    <span class="relative z-10 flex items-center space-x-1">
-                        <span>앨범 만들기</span>
-                        <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5"></i>
+                <button onclick="navigateToApp()" class="px-6 py-2.5 rounded-full text-xs font-extrabold tracking-wider text-white bg-flairy-accent shadow-glow-indigo hover:bg-flairy-accentHover transition-all duration-300 transform hover:scale-[1.03]">
+                    <span class="flex items-center space-x-1">
+                        <span>무료 앨범 만들기</span>
+                        <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i>
                     </span>
-                    <div class="absolute inset-0 bg-gradient-to-r from-flairy-secondary to-flairy-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 </button>
             </div>
         </div>
     </nav>
 
-    <!-- 히어로 섹션 -->
-    <header class="relative min-h-screen {% if latest_notice %}pt-40{% else %}pt-32{% endif %} pb-20 flex items-center justify-center overflow-hidden">
-        <!-- 배경 글래디언트 오브 -->
-        <div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-flairy-primary/10 blur-[120px] pointer-events-none animate-float-slow"></div>
-        <div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-flairy-secondary/10 blur-[100px] pointer-events-none" style="animation: float 10s ease-in-out infinite alternate;"></div>
-        
+    <!-- [요구사항 2] 교차 섹션 1: 히어로 구역 (조금 더 연하고 온화해진 클래식 슬레이트 네이비 배경) -->
+    <!-- [구성 조정] 1세트: 좌측 정보 메시지 + 우측 "AI 아티스틱 보정 엔진" Before/After 슬라이더 일체화 -->
+    <header class="relative min-h-screen {% if latest_notice %}pt-44{% else %}pt-36{% endif %} pb-20 flex items-center justify-center bg-[#151E3D] text-white overflow-hidden">
+        <!-- 은은하고 밝아진 보랏빛/하늘빛 백그라운드 그라디언트 스팟 -->
+        <div class="absolute top-1/4 left-10 w-96 h-96 bg-flairy-accent/15 rounded-full blur-[150px] pointer-events-none"></div>
+        <div class="absolute bottom-10 right-10 w-80 h-80 bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+
         <div class="max-w-7xl mx-auto px-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-16 items-center relative z-10">
-            <!-- 히어로 텍스트 -->
+            <!-- 좌측 메인 카피 및 핵심 보증 수치 (서체 및 조명 개선) -->
             <div class="lg:col-span-6 space-y-8 text-center lg:text-left">
-                <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-xs font-medium text-flairy-secondary tracking-wider uppercase">
+                <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-indigo-300 tracking-widest uppercase">
                     <span class="flex h-1.5 w-1.5 relative">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-flairy-secondary opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-flairy-secondary"></span>
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-400"></span>
                     </span>
-                    <span>FLAIRY BETA VERSION RELEASED</span>
+                    <span>THE PREMIER 3D MEMOIR PLATFORM</span>
                 </div>
                 
-                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.15]">
+                <h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal text-white leading-[1.2] tracking-tight">
                     추억을 가장<br>
-                    <span class="bg-gradient-to-r from-white via-indigo-200 to-indigo-100 bg-clip-text text-transparent">아름답게 넘겨보는</span><br>
-                    <span class="bg-gradient-to-r from-flairy-primary via-flairy-secondary to-[#c084fc] bg-clip-text text-transparent shadow-sm">3D 디지털 앨범</span>
+                    <span class="italic text-indigo-300 font-light">아름답게 넘겨보는</span><br>
+                    <span class="font-bold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-200">3D 디지털 앨범</span>
                 </h1>
                 
-                <p class="text-base sm:text-lg text-flairy-muted leading-relaxed font-light max-w-xl mx-auto lg:mx-0">
-                    사진첩 속에 잠들어 있는 소중한 순간들을 손끝에서 따스하게 살아나는 3D 북으로 탄생시켜 보세요. 단 하나의 링크로 가족과 친구에게 최고의 연출과 감동을 전하세요.
+                <p class="text-sm sm:text-base text-slate-200 leading-relaxed font-light max-w-xl mx-auto lg:mx-0">
+                    스마트폰 속 잠들어 있는 소중한 사진들을 웹에서 곧바로 손끝으로 조작하는 3D 사진첩 형태로 보존해 보세요. 별도의 설치 없이 링크 하나로 시네마틱 음악과 감성을 온전히 전달합니다.
                 </p>
 
-                <!-- 메인 CTA 그룹 -->
-                <div class="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
-                    <button onclick="navigateToApp()" class="w-full sm:w-auto relative group overflow-hidden px-8 py-4 rounded-full text-sm font-bold tracking-wider text-white bg-gradient-to-r from-flairy-primary via-flairy-secondary to-flairy-secondary shadow-glow-primary hover:shadow-glow-secondary hover:scale-[1.03] transition-all duration-300">
-                        <span class="relative z-10 flex items-center justify-center space-x-2">
-                            <span>지금 무료로 만들기</span>
-                            <i data-lucide="arrow-right" class="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"></i>
+                <!-- 메인 CTA 버튼 콤보 -->
+                <div class="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
+                    <button onclick="navigateToApp()" class="w-full sm:w-auto px-8 py-4 rounded-full text-xs font-extrabold tracking-wider text-white bg-flairy-accent hover:bg-flairy-accentHover shadow-glow-indigo hover:scale-[1.03] transition-all duration-300">
+                        <span class="flex items-center justify-center space-x-2">
+                            <span>지금 무료 제작하기</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
                         </span>
-                        <div class="absolute inset-0 bg-gradient-to-r from-flairy-secondary to-flairy-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     </button>
-                    <a href="#simulator" class="w-full sm:w-auto flex items-center justify-center space-x-2 px-8 py-4 rounded-full text-sm font-semibold tracking-wider text-flairy-text bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/20 transition-all duration-300">
-                        <i data-lucide="play-circle" class="w-4 h-4 text-flairy-secondary"></i>
-                        <span>3D 체험하기</span>
+                    <a href="#simulator" class="w-full sm:w-auto flex items-center justify-center space-x-2 px-8 py-4 rounded-full text-xs font-semibold tracking-wider text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all shadow-sm">
+                        <i data-lucide="play-circle" class="w-4 h-4 text-indigo-300 animate-pulse"></i>
+                        <span>3D 미리 체험존</span>
                     </a>
                 </div>
 
-                <!-- 수치 입증 지표 -->
-                <div class="grid grid-cols-3 gap-6 pt-10 border-t border-white/[0.05] max-w-md mx-auto lg:mx-0">
+                <!-- 핵심 보증 지표 (고딕 기반 완벽한 시인성 정돈) -->
+                <div class="grid grid-cols-3 gap-6 pt-10 border-t border-white/10 max-w-md mx-auto lg:mx-0">
                     <div>
-                        <div class="text-2xl sm:text-3xl font-extrabold text-white">450k+</div>
-                        <div class="text-[11px] sm:text-xs text-flairy-muted uppercase tracking-wider mt-1">제작된 앨범 수</div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">450k+</div>
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mt-1">제작된 3D 앨범</div>
                     </div>
                     <div>
-                        <div class="text-2xl sm:text-3xl font-extrabold text-white">99.4%</div>
-                        <div class="text-[11px] sm:text-xs text-flairy-muted uppercase tracking-wider mt-1">고객 만족도</div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">99.4%</div>
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mt-1">사용자 정서 만족</div>
                     </div>
                     <div>
-                        <div class="text-2xl sm:text-3xl font-extrabold text-white">1.2s</div>
-                        <div class="text-[11px] sm:text-xs text-flairy-muted uppercase tracking-wider mt-1">평균 로딩 속도</div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">1.2s</div>
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mt-1">클라우드 로딩 속도</div>
                     </div>
                 </div>
             </div>
 
-            <!-- AI 보정 비주얼 비교 (히어로 우측) -->
-            <div class="lg:col-span-6 flex flex-col justify-center">
-                <div class="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden">
-                    <div class="space-y-2 mb-6">
-                        <h3 class="text-lg font-bold text-white">AI 아티스틱 보정 엔진</h3>
-                        <p class="text-xs text-flairy-muted">
-                            단순한 플랫 사진을 Flairy만의 입체 광학 매커니즘과 감성 필터가 적용된 고차원 예술작품으로 연출합니다. 슬라이더를 밀어 품질 차이를 감상해 보세요.
-                        </p>
+            <!-- 우측: AI 아티스틱 보정 엔진 (Before/After Slider) 소프트 네이비 및 슬레이트 매치 -->
+            <div class="lg:col-span-6 bg-flairy-indigoLight/70 backdrop-blur-md border border-white/15 rounded-2xl p-6 flex flex-col justify-between shadow-2xl relative">
+                <div class="space-y-1.5 mb-5 text-center lg:text-left">
+                    <div class="flex items-center justify-center lg:justify-start space-x-2">
+                        <span class="text-[9px] bg-flairy-accent/25 text-indigo-200 px-2.5 py-0.5 rounded font-bold uppercase tracking-wider">AI ARTISTIC ENGINE</span>
+                        <span class="text-xs text-indigo-300 font-mono">MODEL v2.5</span>
+                    </div>
+                    <h3 class="font-serif text-lg font-semibold text-white">시네마틱 실시간 화질 보정</h3>
+                    <p class="text-xs text-slate-300 font-light leading-relaxed">
+                        모바일 촬영 이미지의 왜곡된 채도를 부드럽게 복원하고, 시네마 전용 아날로그 필름 감성의 깊이감과 투명함을 실시간으로 불어넣습니다.
+                    </p>
+                </div>
+
+                <!-- Slider Container -->
+                <div class="relative w-full h-[280px] md:h-[320px] rounded-xl overflow-hidden select-none shadow-inner border border-white/10" id="slider-container">
+                    <!-- Before Image (Original) -->
+                    <div class="absolute inset-0 bg-cover bg-center" id="before-img-bg" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200')">
+                        <span class="absolute bottom-3 left-3 bg-black/60 px-2.5 py-1 rounded text-[9px] text-white font-mono tracking-wider">BEFORE (스마트폰 원본)</span>
+                    </div>
+                    
+                    <!-- After Image (Enhanced) -->
+                    <div class="absolute inset-0 bg-cover bg-center transition-all pointer-events-none" id="after-image" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200'); width: 50%; filter: saturate(1.25) contrast(1.1) brightness(1.03) sepia(0.08);">
+                        <span class="absolute bottom-3 right-3 bg-flairy-accent text-white px-2.5 py-1 rounded text-[9px] font-bold tracking-wider">AFTER (시네마틱 렌더)</span>
                     </div>
 
-                    <div class="relative w-full h-[320px] md:h-[380px] rounded-xl overflow-hidden select-none" id="slider-container">
-                        <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200')">
-                            <span class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">BEFORE (원본 파일)</span>
-                        </div>
-                        <div class="absolute inset-0 bg-cover bg-center transition-all pointer-events-none filter brightness-110 saturate-105" id="after-image" style="background-image: url('https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&q=80&w=1200'); width: 50%; filter: sepia(0.2) contrast(1.1) brightness(1.05) hue-rotate(-10deg);">
-                            <span class="absolute bottom-4 right-4 bg-flairy-primary/80 px-3 py-1 rounded text-[10px] text-white tracking-widest uppercase">AFTER (FLAIRY AI 보정본)</span>
-                        </div>
-                        <div class="absolute top-0 bottom-0 left-1/2 w-1 bg-white cursor-ew-resize slider-handle flex items-center justify-center" id="drag-bar">
-                            <div class="w-8 h-8 rounded-full bg-white text-flairy-bg shadow-lg flex items-center justify-center border border-flairy-primary/20 pointer-events-none">
-                                <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
-                            </div>
+                    <!-- Drag Bar -->
+                    <div class="absolute top-0 bottom-0 left-1/2 w-[2px] bg-indigo-300 cursor-ew-resize slider-handle flex items-center justify-center" id="drag-bar">
+                        <div class="w-8 h-8 rounded-full bg-[#151E3D] text-white shadow-lg flex items-center justify-center border border-flairy-accent/40 pointer-events-none">
+                            <i data-lucide="arrow-left-right" class="w-3.5 h-3.5 text-indigo-300"></i>
                         </div>
                     </div>
+                </div>
 
-                    <!-- 필터 필름 연출 (AI 보정 슬라이더 바로 아래) -->
-                    <div class="space-y-3 mt-6 pt-4 border-t border-white/[0.04]">
-                        <label class="text-xs font-semibold text-flairy-muted tracking-wider uppercase block">필터 필름 연출</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="setSimFilter('vintage')" id="btn-filter-vintage" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">클래식 빈티지</button>
-                            <button type="button" onclick="setSimFilter('noir')" id="btn-filter-noir" class="py-2 text-[11px] font-bold rounded-lg bg-white/5 border border-white/10 hover:border-flairy-primary text-white transition-all">시네마 노아르</button>
-                            <button type="button" onclick="setSimFilter('sunset')" id="btn-filter-sunset" class="py-2 text-[11px] font-bold rounded-lg bg-flairy-primary border border-flairy-primary/30 text-white transition-all">선셋 아우라</button>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-between items-center mt-4 text-xs text-flairy-muted">
-                        <span>가족 앨범, 프로포즈 기획 최적화 연출</span>
-                        <span class="text-flairy-accent flex items-center space-x-1">
-                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
-                            <span>클릭 한 번으로 3D 보정 완성</span>
-                        </span>
-                    </div>
+                <!-- Preset Swapping Tabs -->
+                <div class="grid grid-cols-3 gap-2 mt-4 text-center font-sans">
+                    <button type="button" onclick="swapSliderPreset('landscape')" id="btn-slide-landscape" class="py-2 rounded-lg bg-flairy-accent text-white text-xs font-bold transition-all shadow">풍경 / 바다</button>
+                    <button type="button" onclick="swapSliderPreset('people')" id="btn-slide-people" class="py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition-all">인물 / 커플</button>
+                    <button type="button" onclick="swapSliderPreset('classic')" id="btn-slide-classic" class="py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition-all">클래식 흑백</button>
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- 실시간 인터랙티브 체험 및 업로드 존 -->
-    <section id="simulator" class="py-24 bg-flairy-section border-t border-b border-white/[0.02] relative">
+    <!-- [요구사항 2] 교차 섹션 2: 3D체험 및 업로드 드롭존 (안온하고 포근한 '쿨그레이' 지면 연출) -->
+    <section id="simulator" class="py-24 bg-[#F8FAFC] border-b border-slate-200/80">
         <div class="max-w-7xl mx-auto px-6">
-            <div class="max-w-3xl mx-auto text-center space-y-4 mb-16">
-                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-white">나의 일상이 3D가 되는 마법을 체험해 보세요</h2>
-                <p class="text-flairy-muted text-sm md:text-base font-light">
-                    가지고 계신 사진을 가볍게 올려보세요. Flairy의 실시간 입체 렌더러가 사진 속 감정을 그대로 살려 우아하게 앨범 속 페이지에 배치해 줍니다.
-                </p>
+            <div class="max-w-3xl mx-auto text-center space-y-3 mb-16">
+                <span class="text-xs font-bold text-flairy-accent tracking-wider uppercase">REAL-TIME INTERACTIVE VIEW</span>
+                <h2 class="font-serif text-3xl md:text-4xl font-normal text-slate-900 leading-tight">
+                    너의 소중한 일상이 <span class="italic text-flairy-accent">3D</span>가 되는 마법
+                </h2>
+                <div class="w-12 h-[1px] bg-flairy-accent mx-auto mt-4"></div>
             </div>
 
-            <div class="flex flex-col gap-10 max-w-3xl mx-auto">
-                <!-- 3D 앨범 실시간 미리보기 (상단) -->
-                <div class="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 md:p-10 flex flex-col items-center justify-center relative overflow-visible sim-album-stage">
-                    <div class="absolute w-[280px] h-[280px] md:w-[360px] md:h-[360px] rounded-full border border-flairy-primary/10 animate-spin-slow pointer-events-none"></div>
-                    <div class="absolute w-[180px] h-[180px] md:w-[240px] md:h-[240px] rounded-full border border-flairy-secondary/20 pointer-events-none"></div>
+            <!-- 중앙: 3D 앨범 실물 렌더링 영역 (원형 격자가 미려하게 살아나는 은빛 콘텍스트) -->
+            <div class="flex flex-col items-center justify-center relative min-h-[460px] max-w-4xl mx-auto rounded-3xl bg-[#F8FAFC] border border-slate-200 py-12 px-6 md:px-14 shadow-inner-soft overflow-hidden mb-12">
+                <div class="absolute w-[320px] h-[320px] md:w-[420px] md:h-[420px] rounded-full border border-slate-200/80 animate-spin-slow pointer-events-none"></div>
 
-                    <div class="relative z-10 w-full text-center mb-4">
-                        <h3 class="text-lg font-bold text-white">3D 앨범 실시간 미리보기</h3>
-                        <p class="text-xs text-flairy-muted mt-1">아래에서 사진을 올리면 바로 앨범에 반영됩니다</p>
-                    </div>
-
-                    <div class="book-container py-4 relative z-10">
-                        <div id="hero-book" class="book shadow-2xl">
-                            <div class="page z-40" id="p1">
-                                <div class="page-face page-front bg-gradient-to-br from-[#473c5e] to-[#383445] border-r border-white/10 flex flex-col justify-between p-8">
-                                    <div class="flex justify-between items-center">
-                                        <div class="text-xs text-flairy-secondary tracking-widest uppercase font-semibold">PREMIUM FLIP</div>
-                                        <span class="text-flairy-secondary">✦</span>
-                                    </div>
-                                    <div class="space-y-4">
-                                        <h3 class="text-2xl font-bold text-white tracking-wide leading-tight">우리 둘의 특별한 오늘 하루</h3>
-                                        <p class="text-xs text-flairy-muted">Created at Flairy Studio</p>
-                                    </div>
-                                    <div class="h-32 rounded bg-cover bg-center border border-white/5" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600')"></div>
-                                    <div class="flex justify-between items-center text-[10px] text-flairy-muted border-t border-white/10 pt-4">
-                                        <span>FLAIRY CO.</span>
-                                        <span>COVER</span>
-                                    </div>
+                <!-- 3D 앨범 가상 공간 -->
+                <div class="book-container py-6 relative z-10">
+                    <div id="hero-book" class="book shadow-premium">
+                        <!-- PAGE 1 (Cover - 살짝 톤업되어 매끄러워진 프러시안 네이비 양장 하드커버) -->
+                        <div class="page z-40" id="p1">
+                            <div class="page-face page-front bg-gradient-to-br from-[#151E3D] to-slate-700 border-r border-white/10 flex flex-col justify-between p-8 text-white">
+                                <div class="flex justify-between items-center">
+                                    <div class="text-[9px] text-indigo-300 tracking-wider uppercase font-mono">PREMIUM 3D MEMOIR</div>
+                                    <span class="text-indigo-400">✦</span>
                                 </div>
-                                <div class="page-face page-back bg-[#3d3a4e] p-6 flex flex-col justify-between text-xs text-flairy-muted">
-                                    <div class="h-full flex flex-col justify-between">
-                                        <p class="leading-relaxed">어두운 밤하늘 속 별빛처럼 환하게 빛나던 너의 눈동자, 우리의 모든 시작은 작은 미소 하나로부터 피어났습니다.</p>
-                                        <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600')"></div>
-                                    </div>
+                                <div class="space-y-3">
+                                    <h3 class="font-serif text-xl md:text-2xl font-normal tracking-wide leading-snug">우리들의 행복한 순간</h3>
+                                    <p class="text-[9px] text-slate-400 font-mono">Powered by Flairy WebGL</p>
+                                </div>
+                                <div class="h-32 rounded bg-cover bg-center border border-white/5 filter saturate-[0.85]" style="background-image: url('https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600')"></div>
+                                <div class="flex justify-between items-center text-[9px] text-slate-400 border-t border-white/10 pt-4 font-mono">
+                                    <span>FLAIRY CO.</span>
+                                    <span>COVER</span>
                                 </div>
                             </div>
-
-                            <div class="page z-30" id="p2">
-                                <div class="page-face page-front bg-[#3d3a4e] p-6 flex flex-col justify-between text-xs text-flairy-muted">
-                                    <div class="h-full flex flex-col justify-between">
-                                        <div class="h-2/3 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=600')"></div>
-                                        <p class="leading-relaxed pt-3">싱그러운 햇살 아래 흩날리던 하얀 바람, 그 속에 가만히 남겨두고 싶었던 우리 둘만의 속삭임.</p>
-                                    </div>
-                                </div>
-                                <div class="page-face page-back bg-[#413e54] p-6 flex flex-col justify-between">
-                                    <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
-                                        <p class="leading-relaxed">바람에 쓸리던 파도 소리조차 음악이 되었던 그 여름날, 차가운 에이드 한 모금과 끝없는 바다를 배경 삼아 나눈 대화들.</p>
-                                        <div class="h-1/2 rounded bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=600')"></div>
-                                    </div>
+                            <!-- 안쪽 지면: 부드러운 한지/밀크지 필링 쿨그레이 -->
+                            <div class="page-face page-back bg-slate-100 p-6 flex flex-col justify-between text-xs text-slate-600 border-r border-slate-300">
+                                <div class="h-full flex flex-col justify-between">
+                                    <p class="font-serif leading-relaxed text-slate-800 italic">"그곳에 불어오던 따사로운 가을바람과, 수줍게 지어보이던 너의 완벽한 미소까지 고이 간직해 드립니다."</p>
+                                    <div class="h-1/2 rounded bg-cover bg-center shadow-inner filter saturate-[0.9]" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600')"></div>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="page z-20" id="p3">
-                                <div class="page-face page-front bg-[#413e54] p-6 flex flex-col justify-between">
-                                    <div class="h-full flex flex-col justify-between text-xs text-flairy-muted">
-                                        <div id="sim-photo-holder" class="h-2/3 rounded bg-cover bg-center border-2 border-dashed border-flairy-secondary/30 flex flex-col items-center justify-center text-center p-4 transition-all duration-300" style="background-image: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=600')">
-                                            <div id="sim-upload-prompt" class="bg-flairy-bg/80 backdrop-blur-md px-3 py-2 rounded-lg border border-white/10">
-                                                <p class="text-[10px] text-white font-medium">아래에서 사진을 업로드해 보세요</p>
-                                            </div>
+                        <!-- PAGE 2 -->
+                        <div class="page z-30" id="p2">
+                            <div class="page-face page-front bg-white p-6 flex flex-col justify-between text-xs text-slate-600 border-l border-slate-300">
+                                <div class="h-full flex flex-col justify-between">
+                                    <div class="h-2/3 rounded bg-cover bg-center shadow-inner" style="background-image: url('https://images.unsplash.com/photo-1519689680058-324335c77eba?auto=format&fit=crop&q=80&w=600')"></div>
+                                    <p class="font-serif leading-relaxed pt-3 text-slate-800">새로운 첫 걸음마를 배우던 날, 우리 아기의 평화로운 미소 일기.</p>
+                                </div>
+                            </div>
+                            <div class="page-face page-back bg-slate-100 p-6 flex flex-col justify-between text-xs text-slate-600 border-r border-slate-300">
+                                <div class="h-full flex flex-col justify-between">
+                                    <p class="font-serif leading-relaxed font-light text-slate-800">끝없이 펼쳐진 수평선 앞에서, 바람 소리와 함께 마음을 나누었던 뜨거운 여름철 바다 여행.</p>
+                                    <div class="h-1/2 rounded bg-cover bg-center shadow-inner" style="background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=600')"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PAGE 3 -->
+                        <div class="page z-20" id="p3">
+                            <div class="page-face page-front bg-white p-6 flex flex-col justify-between border-l border-slate-300">
+                                <div class="h-full flex flex-col justify-between text-xs text-slate-600">
+                                    <div id="sim-photo-holder" class="h-2/3 rounded bg-cover bg-center border border-slate-200 flex flex-col items-center justify-center text-center p-4 transition-all duration-300" style="background-image: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&q=80&w=600')">
+                                        <div id="sim-upload-prompt" class="bg-white/90 px-3 py-2 rounded-lg border border-flairy-accent/30 shadow-sm">
+                                            <p class="text-[10px] text-flairy-accent font-bold">체험 가상 이미지가 대입되는 슬롯</p>
                                         </div>
-                                        <p class="leading-relaxed pt-3 text-center font-serif italic text-flairy-secondary">"Our beautiful memories never fade away."</p>
                                     </div>
+                                    <p class="font-serif leading-relaxed pt-3 text-center italic text-flairy-accent font-bold">"Your cinematic moments, immortalized."</p>
                                 </div>
-                                <div class="page-face page-back bg-gradient-to-bl from-[#383445] to-[#473c5e] border-l border-white/10 flex flex-col justify-between p-8 text-right">
-                                    <div class="flex justify-between items-center flex-row-reverse">
-                                        <div class="text-xs text-flairy-accent tracking-widest uppercase font-semibold">THE END</div>
-                                        <span class="text-flairy-accent">✦</span>
-                                    </div>
-                                    <div class="space-y-2">
-                                        <h4 class="text-lg font-bold text-white leading-tight font-serif">우리의 이야기는<br>계속됩니다.</h4>
-                                        <p class="text-[11px] text-flairy-muted">FLAIRY MEMORIES</p>
-                                    </div>
-                                    <button onclick="navigateToApp()" class="px-4 py-2 bg-white/5 border border-white/10 hover:border-flairy-primary/50 text-[11px] text-white rounded transition-colors self-end mt-4">실제 앨범 제작하기</button>
+                            </div>
+                            <!-- 3D 북 마지막 뒷표지 역시 톤업된 네이비 가죽 엠보스 느낌 유지 -->
+                            <div class="page-face page-back bg-gradient-to-bl from-[#151E3D] to-slate-700 border-l border-white/10 flex flex-col justify-between p-8 text-right text-white">
+                                <div class="flex justify-between items-center flex-row-reverse">
+                                    <div class="text-[9px] text-indigo-300 tracking-wider font-mono">FINISHED</div>
+                                    <span class="text-flairy-accent">✦</span>
                                 </div>
+                                <div class="space-y-1.5">
+                                    <h4 class="font-serif text-lg font-normal leading-tight">빛바래지 않을 기억의 소장.</h4>
+                                    <p class="text-[9px] text-slate-300 font-mono">FLAIRY MEMORIES INC.</p>
+                                </div>
+                                <button onclick="navigateToApp()" class="px-4 py-2 bg-white/5 border border-white/10 hover:border-flairy-accent text-[10px] text-white rounded transition-colors self-end mt-4">실제 앨범 제작하기</button>
                             </div>
                         </div>
                     </div>
-
-                    <div class="flex items-center space-x-6 mt-2 relative z-20 bg-white/[0.02] border border-white/[0.05] rounded-full px-5 py-2.5 backdrop-blur-sm">
-                        <button onclick="prevPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
-                            <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                        </button>
-                        <span id="page-indicator" class="text-xs font-mono font-medium tracking-widest text-flairy-muted">COVER / PAGE 1</span>
-                        <button onclick="nextPage()" class="w-10 h-10 rounded-full flex items-center justify-center border border-white/10 hover:border-flairy-secondary hover:bg-white/5 text-white transition-all duration-200">
-                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                        </button>
-                    </div>
                 </div>
 
-                <!-- 드래그 앤 드롭 업로드존 (하단) -->
-                <div id="sim-upload-zone" class="bg-white/[0.02] border border-white/[0.05] hover:border-flairy-secondary/40 rounded-2xl p-8 flex flex-col space-y-6 relative overflow-hidden group transition-all duration-300 cursor-pointer">
-                    <div class="absolute -top-12 -right-12 w-24 h-24 bg-flairy-primary/10 rounded-full blur-xl group-hover:bg-flairy-primary/20 transition-all duration-500"></div>
-
-                    <div class="flex items-start space-x-4">
-                        <div class="w-12 h-12 rounded-xl bg-flairy-primary/10 border border-flairy-primary/20 flex items-center justify-center text-flairy-primary shrink-0">
-                            <i data-lucide="image-plus" class="w-6 h-6"></i>
-                        </div>
-                        <div class="space-y-1 min-w-0">
-                            <h3 class="text-lg font-bold text-white">체험용 가상 업로드</h3>
-                            <p class="text-xs text-flairy-muted leading-relaxed">
-                                소장용 이미지를 업로드해보세요. 서버로 전송되지 않고 브라우저 내에서만 안전하게 렌더링됩니다.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="border border-dashed border-white/10 group-hover:border-flairy-secondary/50 rounded-xl p-8 text-center bg-flairy-bg/40 transition-all duration-300">
-                        <input type="file" id="sim-image-input" accept="image/*" class="hidden">
-                        <div class="flex flex-col items-center justify-center space-y-2">
-                            <i data-lucide="cloud-lightning" class="w-8 h-8 text-flairy-secondary animate-bounce"></i>
-                            <p class="text-xs text-white font-medium">이곳을 클릭하거나 이미지 드래그</p>
-                            <p class="text-[10px] text-flairy-muted">PNG, JPG 파일 지원</p>
-                        </div>
-                    </div>
+                <!-- 3D 앨범 방향키 콘트롤러 (시크한 실버/인디고 조작계) -->
+                <div class="flex items-center space-x-6 mt-6 relative z-20 bg-white border border-slate-200 rounded-full px-5 py-2.5 shadow-md">
+                    <button onclick="prevPage()" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200">
+                        <i data-lucide="chevron-left" class="w-4.5 h-4.5"></i>
+                    </button>
+                    <span id="page-indicator" class="text-[11px] font-mono font-extrabold tracking-wider text-slate-800">COVER / PAGE 1</span>
+                    <button onclick="nextPage()" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200">
+                        <i data-lucide="chevron-right" class="w-4.5 h-4.5"></i>
+                    </button>
                 </div>
+            </div>
+
+            <!-- 하단: 이미지 업로드 드롭존 카드 (소프트한 인디고 점선 스킨) -->
+            <div id="sim-upload-zone" class="max-w-xl mx-auto bg-white border-2 border-dashed border-indigo-200 hover:border-flairy-accent rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 group shadow-sm">
+                <input type="file" id="sim-image-input" accept="image/*" class="hidden">
+                <div class="w-14 h-14 rounded-full bg-indigo-50/50 text-flairy-accent flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-105">
+                    <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-800 mb-1">이곳에 사진을 올려두면 3D 앨범에 즉시 반영됩니다</h3>
+                <p class="text-xs text-slate-400 font-light">마우스로 이미지를 드래그 앤 드롭하거나 영역을 클릭해 보세요.</p>
             </div>
         </div>
     </section>
 
-    <!-- 기능 소개 섹션 (Features) -->
-    <section id="features" class="py-24 max-w-7xl mx-auto px-6">
-        <div class="text-center space-y-4 max-w-3xl mx-auto mb-20">
-            <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-white leading-tight">가장 현대적인 방법으로 기록하는 그날의 감동</h2>
-            <p class="text-flairy-muted text-sm md:text-base font-light">두껍고 무거운 실물 사진첩 대신, 모든 공간과 스크린을 넘나드는 극도의 입체적 몰입감을 만나보세요.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <!-- Feature 1 -->
-            <div class="bg-white/[0.01] border border-white/[0.04] hover:border-flairy-primary/30 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:translate-y-[-4px] group">
-                <div class="w-12 h-12 rounded-xl bg-[#3b384e] border border-flairy-primary/20 flex items-center justify-center text-flairy-primary transition-transform duration-300 group-hover:scale-110">
-                    <i data-lucide="box" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white">현실적인 3D 리얼 렌더링</h3>
-                <p class="text-sm text-flairy-muted leading-relaxed font-light">
-                    실제 종이 책을 넘기는 듯한 물리적 엔진이 탑재되어 부드러운 입체 쉐이딩, 매끄러운 굴곡 효과, 따스한 자연 그림자를 실시간 브라우저 내에서 완벽하게 표현합니다.
-                </p>
-            </div>
-
-            <!-- Feature 2 -->
-            <div class="bg-white/[0.01] border border-white/[0.04] hover:border-flairy-secondary/30 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:translate-y-[-4px] group">
-                <div class="w-12 h-12 rounded-xl bg-[#41384e] border border-flairy-secondary/20 flex items-center justify-center text-flairy-secondary transition-transform duration-300 group-hover:scale-110">
-                    <i data-lucide="music" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white">시네마틱 배경 음악 내장</h3>
-                <p class="text-sm text-flairy-muted leading-relaxed font-light">
-                    보는 이의 가슴을 뭉클하게 만드는 테마별 라이선스 무료 오케스트라 및 재즈 음원들이 내장되어 있어, 앨범을 넘기는 내내 감동적인 사운드 스케이프를 제공합니다.
-                </p>
-            </div>
-
-            <!-- Feature 3 -->
-            <div class="bg-white/[0.01] border border-white/[0.04] hover:border-flairy-accent/30 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:translate-y-[-4px] group">
-                <div class="w-12 h-12 rounded-xl bg-[#473745] border border-flairy-accent/20 flex items-center justify-center text-flairy-accent transition-transform duration-300 group-hover:scale-110">
-                    <i data-lucide="qr-code" class="w-6 h-6"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white">모바일 스마트 공유 & QR</h3>
-                <p class="text-sm text-flairy-muted leading-relaxed font-light">
-                    별도의 앱 설치나 회원 가입이 필요하지 않습니다. 링크 하나, 혹은 실물 청첩장이나 이벤트 배너에 들어갈 고화질 QR 코드 생성으로 언제 어디서든 손쉬운 접근이 가능합니다.
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- 테마별 갤러리 및 음악 융합 존 (Theme Gallery) -->
-    <section id="theme" class="py-24 bg-flairy-section border-t border-b border-white/[0.02]">
+    <!-- [요구사항 2] 교차 섹션 3: 기능 소개 (기존 딥블랙 대신 옅어진 클래식 소프트 네이비 기반) -->
+    <section id="features" class="py-24 bg-[#151E3D] text-white relative border-b border-white/10">
         <div class="max-w-7xl mx-auto px-6">
-            <div class="flex flex-col md:flex-row items-start md:items-end justify-between gap-6 mb-16">
+            <!-- 타이틀 영역 -->
+            <div class="text-center space-y-4 max-w-3xl mx-auto mb-20">
+                <span class="text-xs font-bold text-indigo-300 tracking-wider uppercase font-mono">PLATFORM ARCHITECTURE</span>
+                <h2 class="font-serif text-3xl md:text-4xl font-normal tracking-tight leading-tight text-white">가장 완성도 높은 디지털 기록 보관 방식</h2>
+                <div class="w-10 h-[1px] bg-indigo-400/50 mx-auto mt-4"></div>
+            </div>
+
+            <!-- 3단 그리드 카드 배치 (은은한 소프트 네이비 패널) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="bg-flairy-indigoLight border border-flairy-indigoSlate hover:border-flairy-accent/40 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:-translate-y-1 shadow-lg group">
+                    <div class="w-12 h-12 rounded-xl bg-flairy-accent text-white flex items-center justify-center transition-transform duration-300 group-hover:scale-105 shadow-sm">
+                        <i data-lucide="book-open" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="font-serif text-xl font-normal text-white">3D 반응형 종이 엔진</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed font-light">
+                        단순 슬라이더가 아닌 최신 WebGL 물리 그래픽 연산을 결합하여, 모바일 터치 움직임과 압력에 매끄럽게 반응하여 휘어지는 사실적인 종이 넘김 특허 기술을 선사합니다.
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="bg-flairy-indigoLight border border-flairy-indigoSlate hover:border-flairy-accent/40 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:-translate-y-1 shadow-lg group">
+                    <div class="w-12 h-12 rounded-xl bg-flairy-accent text-white flex items-center justify-center transition-transform duration-300 group-hover:scale-105 shadow-sm">
+                        <i data-lucide="music" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="font-serif text-xl font-normal text-white">감성 사운드트랙 결합</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed font-light">
+                        웨딩, 패밀리, 여행의 모든 결에 완벽하게 어우러지는 피아노 연주 및 오케스트라 음원 소스를 유기적으로 설계하여 공감각적 감동을 연출합니다.
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="bg-flairy-indigoLight border border-flairy-indigoSlate hover:border-flairy-accent/40 rounded-2xl p-8 space-y-6 transition-all duration-300 hover:-translate-y-1 shadow-lg group">
+                    <div class="w-12 h-12 rounded-xl bg-flairy-accent text-white flex items-center justify-center transition-transform duration-300 group-hover:scale-105 shadow-sm">
+                        <i data-lucide="clapperboard" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="font-serif text-xl font-normal text-white">AI 하이라이트 영상 변형</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed font-light">
+                        완성된 3D 앨범 안에서 가장 감성 가치가 깊은 핵심 페이지를 AI 큐레이터가 알아서 판단하여, 한 편의 우아한 고화질 모바일 시네마 영상으로 숏클립 자동 변형합니다.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- [요구사항 2] 교차 섹션 4: 테마 갤러리 융합 공간 (차분한 쿨그레이 슬레이트 톤) -->
+    <section id="theme" class="py-24 bg-[#FAFBFD] border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex flex-col lg:flex-row items-start lg:items-end justify-between gap-6 mb-16">
                 <div class="space-y-4 max-w-2xl">
-                    <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-white">추억의 온도에 걸맞은 테마를 찾으세요</h2>
-                    <p class="text-flairy-muted text-sm md:text-base font-light">당신의 이야기가 더 몰입감 넘치게 연출될 수 있도록 완벽히 튜닝된 템플릿과 사운드 컬렉션을 탑재하고 있습니다.</p>
+                    <span class="text-xs font-bold text-flairy-accent tracking-wider uppercase">SELECTIVE GALLERY MOOD</span>
+                    <h2 class="font-serif text-3xl md:text-4xl font-normal text-slate-900 leading-tight">
+                        추억의 고유한 결에 알맞은 분위기를 선택하세요
+                    </h2>
                 </div>
                 
-                <!-- 테마 컨트롤러 -->
-                <div class="flex space-x-2 bg-flairy-bg p-1.5 rounded-full border border-white/[0.05]">
-                    <button onclick="switchTheme('wedding')" id="btn-theme-wedding" class="px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 bg-flairy-primary text-white">웨딩 & 로맨스</button>
-                    <button onclick="switchTheme('travel')" id="btn-theme-travel" class="px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 text-flairy-muted hover:text-white">여행 & 액티비티</button>
-                    <button onclick="switchTheme('baby')" id="btn-theme-baby" class="px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 text-flairy-muted hover:text-white">가족 & 육아</button>
+                <!-- 테마 스위처 (소프트 실버 & 화사해진 네이비 융합 테마 디자인) -->
+                <div class="flex space-x-1.5 bg-slate-200/80 p-1.5 rounded-full border border-slate-300/30 shadow-inner-soft">
+                    <button onclick="switchTheme('wedding')" id="btn-theme-wedding" class="px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-300 bg-[#151E3D] text-white shadow-sm">웨딩 & 커플</button>
+                    <button onclick="switchTheme('travel')" id="btn-theme-travel" class="px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-300 text-slate-600 hover:text-slate-950">여행 & 모험</button>
+                    <button onclick="switchTheme('baby')" id="btn-theme-baby" class="px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-300 text-slate-600 hover:text-slate-950">성장 & 가족</button>
                 </div>
             </div>
 
-            <!-- 테마 정보 보드 및 음악 재생기 -->
+            <!-- 테마 이미지 카드 & 전용 사운드 플레이어 구조 -->
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-                <!-- 테마 대형 목업 이미지 -->
-                <div class="lg:col-span-7 relative group overflow-hidden rounded-2xl border border-white/5">
-                    <img id="theme-banner-img" src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200" alt="Theme Banner" class="w-full h-[400px] object-cover transition-transform duration-700 group-hover:scale-105">
-                    <div class="absolute inset-0 bg-gradient-to-t from-flairy-bg via-transparent to-transparent"></div>
+                <!-- 좌측 대형 이미지 쇼케이스 -->
+                <div class="lg:col-span-7 relative group overflow-hidden rounded-2xl border border-slate-200 shadow-md">
+                    <img id="theme-banner-img" src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200" alt="Theme Banner" class="w-full h-[380px] object-cover transition-transform duration-700 group-hover:scale-[1.03]">
+                    <div class="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent"></div>
                     <div class="absolute bottom-8 left-8 space-y-2">
-                        <span id="theme-badge" class="px-3 py-1 rounded bg-flairy-primary/80 border border-flairy-primary/30 text-[10px] font-bold text-white tracking-widest uppercase">ROMANTIC WEDDING</span>
-                        <h3 id="theme-display-title" class="text-2xl font-bold text-white">축복 가득한 날, 우리들의 빛나는 웨딩 앨범</h3>
+                        <span id="theme-badge" class="px-3 py-1 bg-flairy-accent text-white text-[9px] font-bold tracking-wider uppercase rounded">ROMANTIC WEDDING</span>
+                        <h3 id="theme-display-title" class="font-serif text-2xl font-normal text-white">축복 가득한 날, 우리들의 빛나는 웨딩 앨범</h3>
                     </div>
                 </div>
 
-                <!-- 테마 음악 및 혜택 디스크립션 -->
+                <!-- 우측 설명 & 실제 음악 연동 카드 -->
                 <div class="lg:col-span-5 space-y-8">
-                    <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-6 space-y-6">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-flairy-muted tracking-widest uppercase">테마 시그니처 앰비언스</span>
-                            <span class="flex h-2 w-2 relative">
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                            </span>
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-6 shadow-sm">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <span class="text-[10px] font-bold text-flairy-accent tracking-wider uppercase">테마 고유 전용 사운드트랙</span>
                         </div>
 
                         <!-- 가상 오디오 재생 카드 -->
-                        <div class="flex items-center space-x-4 bg-flairy-bg/80 border border-white/[0.04] p-4 rounded-xl">
-                            <button onclick="toggleAudio()" class="w-12 h-12 rounded-full bg-flairy-primary text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-glow-primary">
-                                <i id="audio-play-icon" data-lucide="play" class="w-5 h-5 fill-white"></i>
+                        <div class="flex items-center space-x-4 bg-[#F8FAFC] border border-slate-200 p-4 rounded-xl">
+                            <button onclick="toggleAudio()" class="w-11 h-11 rounded-full bg-flairy-accent text-white flex items-center justify-center hover:scale-105 transition-all shadow-md">
+                                <i id="audio-play-icon" data-lucide="play" class="w-4.5 h-4.5 fill-white text-white"></i>
                             </button>
                             <div class="flex-1 min-w-0">
-                                <p id="theme-track-title" class="text-xs font-bold text-white truncate">Clair de Lune (달빛 - 클래식 오케스트라)</p>
-                                <p class="text-[10px] text-flairy-muted mt-1">Flairy Exclusive Emotional Sound</p>
-                                <!-- 가짜 스펙트럼 이펙트 -->
-                                <div id="audio-visualizer" class="flex items-end space-x-1 h-3 mt-2 opacity-30">
-                                    <div class="w-1 bg-flairy-secondary rounded-full h-1"></div>
-                                    <div class="w-1 bg-flairy-secondary rounded-full h-2"></div>
-                                    <div class="w-1 bg-flairy-secondary rounded-full h-1"></div>
-                                    <div class="w-1 bg-flairy-secondary rounded-full h-3"></div>
-                                    <div class="w-1 bg-flairy-secondary rounded-full h-1.5"></div>
+                                <p id="theme-track-title" class="text-xs font-bold text-slate-800 truncate font-serif">Clair de Lune (달빛 - 명품 어쿠스틱 피아노)</p>
+                                <p class="text-[9px] text-slate-400 mt-1 font-mono font-light">Sensory Ambient Background</p>
+                                <div id="audio-visualizer" class="flex items-end space-x-1 h-2.5 mt-2 opacity-30">
+                                    <div class="w-1 bg-flairy-accent rounded-full h-1"></div>
+                                    <div class="w-1 bg-flairy-accent rounded-full h-2"></div>
+                                    <div class="w-1 bg-flairy-accent rounded-full h-1"></div>
+                                    <div class="w-1 bg-flairy-accent rounded-full h-2.5"></div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- 혜택 체크리스트 -->
-                        <ul class="space-y-3.5 text-xs text-flairy-muted">
+                        <ul class="space-y-3.5 text-xs text-slate-600">
                             <li class="flex items-center space-x-3">
-                                <i data-lucide="check" class="w-4 h-4 text-flairy-primary"></i>
-                                <span>고귀하고 화사한 샌드 베이지/골드 톤 레이아웃 적용</span>
+                                <i data-lucide="check" class="w-4.5 h-4.5 text-flairy-accent"></i>
+                                <span class="font-normal text-slate-700">모바일 세로형 가독성을 고려하여 배치 설계된 고대비 폰트 자동 정렬</span>
                             </li>
                             <li class="flex items-center space-x-3">
-                                <i data-lucide="check" class="w-4 h-4 text-flairy-primary"></i>
-                                <span>모바일 터치 넘김 모션 완벽 반응형 최적화</span>
-                            </li>
-                            <li class="flex items-center space-x-3">
-                                <i data-lucide="check" class="w-4 h-4 text-flairy-primary"></i>
-                                <span>온라인 하객록 및 기프티콘 전송 모듈 유기적 결합 지원</span>
+                                <i data-lucide="check" class="w-4.5 h-4.5 text-flairy-accent"></i>
+                                <span class="font-normal text-slate-700">인쇄 용지 지질 특성을 연구하여 적용한 아날로그 매트 스킨 기틀 적용</span>
                             </li>
                         </ul>
                     </div>
 
-                    <button onclick="navigateToApp()" class="w-full relative group overflow-hidden py-4 rounded-xl text-xs font-bold tracking-wider text-white bg-white/[0.03] border border-white/10 hover:border-flairy-secondary hover:scale-[1.01] transition-all duration-300">
-                        <span class="relative z-10">이 테마로 즉시 시작하기</span>
-                        <div class="absolute inset-0 bg-gradient-to-r from-flairy-primary/10 to-flairy-secondary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <button onclick="navigateToApp()" class="w-full py-4 rounded-xl text-xs font-bold text-white bg-[#151E3D] hover:bg-flairy-accent hover:scale-[1.01] transition-all shadow-sm">
+                        선택된 무드로 3D 사진첩 제작 시작하기
                     </button>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- 안심하고 신뢰할 수 있는 수치 (Social Proof & Reviews) -->
-    <section class="py-24 max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+    <!-- [요구사항 2] 교차 섹션 5: 고객 감동 실제 후기 (화사하게 가라앉은 쿨그레이 지면) -->
+    <section class="py-24 max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center bg-[#FAFBFD] border-b border-slate-200">
         <div class="lg:col-span-5 space-y-6">
-            <div class="w-10 h-10 rounded-full bg-amber-400/10 text-amber-400 flex items-center justify-center">
-                <i data-lucide="star" class="w-5 h-5 fill-amber-400"></i>
+            <div class="w-10 h-10 rounded-full bg-indigo-50 text-flairy-accent flex items-center justify-center">
+                <i data-lucide="heart" class="w-5 h-5 fill-flairy-accent text-flairy-accent"></i>
             </div>
-            <h2 class="text-3xl font-bold tracking-tight text-white leading-tight">선물을 주고받는 듯한<br>따뜻한 실제 감동 후기</h2>
-            <p class="text-sm text-flairy-muted leading-relaxed font-light">이미 40만 명 이상의 고객님들이 가족, 웨딩, 기념일, 육아 일기의 소중한 순간들을 Flairy를 통해 더 영원하고 눈부시게 박제하고 계십니다.</p>
-            <div class="flex items-center space-x-4 pt-4">
-                <div class="flex -space-x-2.5">
-                    <img class="w-9 h-9 rounded-full ring-2 ring-flairy-bg object-cover" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150" alt="Avatar">
-                    <img class="w-9 h-9 rounded-full ring-2 ring-flairy-bg object-cover" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150" alt="Avatar">
-                    <img class="w-9 h-9 rounded-full ring-2 ring-flairy-bg object-cover" src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150" alt="Avatar">
+            <h2 class="font-serif text-3xl font-normal tracking-tight text-slate-900 leading-tight">
+                소중한 진심을 담은<br><span class="italic text-indigo-500">선물</span>과 같은 실제 후기
+            </h2>
+            <div class="flex items-center space-x-4 pt-2">
+                <div class="flex -space-x-2">
+                    <img class="w-8 h-8 rounded-full ring-2 ring-[#FAFBFD] object-cover" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150" alt="사용자 프로필">
+                    <img class="w-8 h-8 rounded-full ring-2 ring-[#FAFBFD] object-cover" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150" alt="사용자 프로필">
                 </div>
-                <div class="text-xs">
-                    <p class="font-bold text-white">4.9 / 5.0 만족도 달성</p>
-                    <p class="text-[10px] text-flairy-muted mt-0.5">실제 누적 리뷰 수 12,800건 돌파</p>
+                <div class="text-xs text-slate-700 font-bold">
+                    <p>4.9 / 5.0 우수 정서 만족도</p>
                 </div>
             </div>
         </div>
 
         <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <!-- Review 1 -->
-            <div class="bg-white/[0.01] border border-white/[0.04] p-6 rounded-xl space-y-4">
-                <div class="flex items-center space-x-1 text-amber-400">
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
+            <!-- 후기 1 -->
+            <div class="bg-white border border-slate-200 p-6 rounded-xl space-y-4 shadow-sm">
+                <div class="flex items-center space-x-1 text-flairy-accent">
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
                 </div>
-                <p class="text-xs text-flairy-muted leading-relaxed font-light">"부모님 결혼 30주년 기념일 이벤트로 모바일 앨범을 만들어 전해드렸어요. 종이가 실제로 사르륵 넘어가고 고전 음악이 은은하게 흘러나오는데 눈물 흘리며 좋아하셨습니다."</p>
-                <div class="flex items-center space-x-2.5 pt-2">
-                    <div class="w-7 h-7 rounded-full bg-flairy-primary/20 flex items-center justify-center text-flairy-primary text-[10px] font-bold">김민</div>
-                    <span class="text-[10px] text-flairy-muted">웨딩 테마 유저</span>
+                <p class="font-serif text-xs text-slate-600 leading-relaxed font-light">"결혼식 하객 한 분 한 분께 모바일 카드로 전달해 드렸더니, 이런 명품 화보집 같은 모바일 사진첩은 생전 처음이라고 다들 보시는 내내 너무 고마워 하셨습니다."</p>
+                <div class="flex items-center space-x-2 pt-2">
+                    <div class="w-7 h-7 rounded-full bg-indigo-50 flex items-center justify-center text-flairy-accent text-[9px] font-bold">송지</div>
+                    <span class="text-[9px] text-slate-400">웨딩 앨범 제작 유저</span>
                 </div>
             </div>
 
-            <!-- Review 2 -->
-            <div class="bg-white/[0.01] border border-white/[0.04] p-6 rounded-xl space-y-4">
-                <div class="flex items-center space-x-1 text-amber-400">
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
-                    <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i>
+            <!-- 후기 2 -->
+            <div class="bg-white border border-slate-200 p-6 rounded-xl space-y-4 shadow-sm">
+                <div class="flex items-center space-x-1 text-flairy-accent">
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
+                    <i data-lucide="star" class="w-3.5 h-3.5 fill-flairy-accent text-flairy-accent"></i>
                 </div>
-                <p class="text-xs text-flairy-muted leading-relaxed font-light">"유럽 한 달 살기 여행을 기록했는데, 친구들에게 인스타 DM으로 넘겨보는 링크를 뿌리니까 다들 잡지냐며 난리법석이더라고요! 초간편하고 예쁩니다."</p>
-                <div class="flex items-center space-x-2.5 pt-2">
-                    <div class="w-7 h-7 rounded-full bg-flairy-secondary/20 flex items-center justify-center text-flairy-secondary text-[10px] font-bold">이지</div>
-                    <span class="text-[10px] text-flairy-muted">여행 테마 유저</span>
+                <p class="font-serif text-xs text-slate-600 leading-relaxed font-light">"부모님 결혼 기념 여행 앨범으로 지어 드렸는데, 책장을 넘기며 들려오는 은은한 어쿠스틱 소리에 부모님이 눈물을 글썽이셨습니다. 너무 감사해요."</p>
+                <div class="flex items-center space-x-2 pt-2">
+                    <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-[9px] font-bold">민우</div>
+                    <span class="text-[9px] text-slate-400">가족 테마 소장 유저</span>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- 베타 런칭 기념 전면 무료 오픈 쇼케이스 (Pricing 완벽 대체) -->
-    <section id="beta-event" class="py-24 bg-flairy-section border-t border-b border-white/[0.02] relative overflow-hidden">
-        <!-- 배경 반짝이 데코 -->
-        <div class="absolute top-1/3 left-10 text-flairy-secondary/20 text-3xl animate-pulse">✦</div>
-        <div class="absolute bottom-1/4 right-10 text-flairy-primary/20 text-2xl animate-bounce-slow">✦</div>
+    <!-- [요구사항 2] 교차 섹션 6: 베타 런칭 기념 특전 안내 (톤업 네이비 그라디언트) -->
+    <section id="beta-event" class="py-24 bg-gradient-to-br from-[#151E3D] to-[#253059] relative text-white overflow-hidden border-b border-white/5">
+        <div class="absolute top-1/4 right-5 text-indigo-400/20 text-3xl">✦</div>
         
         <div class="max-w-7xl mx-auto px-6 relative z-10">
             <div class="text-center space-y-4 max-w-3xl mx-auto mb-16">
-                <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400 tracking-wider">
-                    <span>LAUNCH SPECIAL EVENT</span>
+                <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold tracking-widest text-indigo-200 uppercase">
+                    <span>LIMITED SIGN-UP SPECIAL</span>
                 </div>
-                <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                    베타 오픈 기념 전면 무료 제공
-                </h2>
-                <p class="text-flairy-muted text-sm md:text-base font-light max-w-xl mx-auto">
-                    현재 Flairy는 유료 결제 도입을 준비하기 앞서, 초기 유저분들의 소중한 피드백을 수집하고자 모든 핵심 프리미엄 스킨과 배경음악 서비스를 완전 무료로 개방하고 있습니다.
+                <h2 class="font-serif text-3xl md:text-4xl font-normal text-white leading-tight">베타 오픈 참여 전폭 무료 제공</h2>
+                <p class="text-slate-200 text-xs md:text-sm font-light max-w-lg mx-auto leading-relaxed">
+                    Flairy의 한계 없는 클라우드 렌더러 기술 검증을 위해, 초기 진입자 한정으로 모든 고품격 커스텀 테마를 전면 무상 개방합니다.
                 </p>
             </div>
 
-            <!-- 싱글 하이라이트 웰컴 카드 디자인 -->
-            <div class="max-w-2xl mx-auto bg-flairy-bg/80 border-2 border-flairy-primary/50 rounded-3xl p-8 md:p-12 shadow-glow-primary relative overflow-hidden group hover:border-flairy-secondary transition-colors duration-500">
-                <div class="absolute top-0 right-0 bg-gradient-to-l from-flairy-primary to-flairy-secondary px-6 py-2 rounded-bl-2xl text-[11px] font-bold text-white tracking-widest uppercase">
-                    FREE BETA PASS
-                </div>
-
+            <!-- 베타 웰컴 카드 (테크니컬 웜 화이트 & 소프트 네이비) -->
+            <div class="max-w-xl mx-auto bg-[#FAFBFD] rounded-3xl p-8 shadow-2xl text-slate-800 border border-slate-200">
                 <div class="space-y-6">
                     <div class="flex items-center space-x-4">
-                        <div class="w-14 h-14 rounded-2xl bg-flairy-primary/10 border border-flairy-primary/30 flex items-center justify-center text-flairy-primary">
-                            <i data-lucide="sparkles" class="w-7 h-7"></i>
+                        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-flairy-accent flex items-center justify-center border border-indigo-100 shadow-sm">
+                            <i data-lucide="award" class="w-6 h-6"></i>
                         </div>
                         <div>
-                            <h3 class="text-xl font-bold text-white flex items-center space-x-1.5">
-                                <span>시네마틱 프로 에디션 스킨 프리셋</span>
-                                <span class="text-xs text-flairy-secondary">✦</span>
-                            </h3>
-                            <p class="text-xs text-flairy-muted mt-1">지금 회원가입만 하시면 즉시 제한 없이 무제한으로 사용 가능합니다.</p>
+                            <h3 class="font-serif text-lg font-bold text-slate-900">시네마틱 프리미엄 올-액세스 패스</h3>
+                            <p class="text-xs text-slate-400 mt-1">간편 계정 등록 시 즉각 영구 활성화됩니다.</p>
                         </div>
                     </div>
 
-                    <!-- 무료 이용 혜택 바둑판 레이아웃 -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-b border-white/[0.08] py-6 my-6 text-xs text-flairy-muted">
-                        <div class="flex items-start space-x-3">
-                            <i data-lucide="check" class="w-4.5 h-4.5 text-emerald-400 shrink-0"></i>
-                            <div>
-                                <h4 class="text-white font-semibold">초고화질 원본 사진 업로드</h4>
-                                <p class="text-[11px] text-flairy-muted mt-0.5">화질 저하 없이 원본 그대로 압도적 렌더링</p>
-                            </div>
+                    <!-- 혜택 체크 그리드 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-b border-slate-200 py-5 text-xs text-slate-600">
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="check" class="w-4 h-4 text-flairy-accent shrink-0"></i>
+                            <span class="font-bold text-slate-800">4K 원본 무손실 사진 파일 업로드</span>
                         </div>
-                        <div class="flex items-start space-x-3">
-                            <i data-lucide="check" class="w-4.5 h-4.5 text-emerald-400 shrink-0"></i>
-                            <div>
-                                <h4 class="text-white font-semibold">배경음악 테마 멀티 트랙 제공</h4>
-                                <p class="text-[11px] text-flairy-muted mt-0.5">감정선을 극대화해주는 프리미엄 음원 탑재</p>
-                            </div>
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="check" class="w-4 h-4 text-flairy-accent shrink-0"></i>
+                            <span class="font-bold text-slate-800">배경 사운드 라이선스 평생 무상 제공</span>
                         </div>
-                        <div class="flex items-start space-x-3">
-                            <i data-lucide="check" class="w-4.5 h-4.5 text-emerald-400 shrink-0"></i>
-                            <div>
-                                <h4 class="text-white font-semibold">간편 모바일 & QR코드 소장</h4>
-                                <p class="text-[11px] text-flairy-muted mt-0.5">실물 인쇄 청첩장, 감사장에 즉시 호환</p>
-                            </div>
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="check" class="w-4 h-4 text-flairy-accent shrink-0"></i>
+                            <span class="font-bold text-slate-800">모바일 맞춤 보증 QR 도안 발급</span>
                         </div>
-                        <div class="flex items-start space-x-3">
-                            <i data-lucide="check" class="w-4.5 h-4.5 text-emerald-400 shrink-0"></i>
-                            <div>
-                                <h4 class="text-white font-semibold">영구 무료 보관 혜택 보장</h4>
-                                <p class="text-[11px] text-flairy-muted mt-0.5">베타 기간 제작 앨범은 평생 무료 영구 보존</p>
-                            </div>
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="check" class="w-4 h-4 text-flairy-accent shrink-0"></i>
+                            <span class="font-bold text-slate-800">서버 암호화 평생 백업 보관 보장</span>
                         </div>
                     </div>
 
-                    <!-- 약속 서명 -->
-                    <p class="text-[11px] text-center text-flairy-muted bg-white/[0.02] border border-white/[0.04] p-3 rounded-xl leading-relaxed">
-                        ⚠️ <span class="text-white font-medium">약속드립니다:</span> 정식 유료 요금제가 개시되더라도, 베타 기간 동안 고객님이 생성하시고 공들여 가꾼 소중한 앨범은 결코 강제 삭제되거나 요금이 부과되지 않으며, 영원히 공유가 안전하게 유지됩니다.
+                    <p class="text-[10px] text-center text-slate-500 bg-slate-50 border border-slate-200 p-3 rounded-lg leading-relaxed font-light">
+                        ⚠️ <b>안전한 보존 약속:</b> 프리 베타 서비스 기간 내에 정성스럽게 빌드하신 디지털 사진첩은, 향후 멤버십이 정식 유료화로 전환된 이후에도 삭제 없이 평생 무상 유지됩니다.
                     </p>
 
-                    <!-- CTA 버튼 -->
-                    <button onclick="navigateToApp()" class="w-full relative group overflow-hidden py-4.5 rounded-2xl text-xs font-bold tracking-wider text-white bg-gradient-to-r from-flairy-primary to-flairy-secondary shadow-glow-primary hover:shadow-glow-secondary hover:scale-[1.01] transition-all duration-300">
-                        <span class="relative z-10 flex items-center justify-center space-x-2">
-                            <span>0원 베타 패스로 즉시 앨범 만들기</span>
-                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </span>
-                        <div class="absolute inset-0 bg-gradient-to-r from-flairy-secondary to-flairy-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <button onclick="navigateToApp()" class="w-full py-4 rounded-xl text-xs font-bold text-white bg-[#151E3D] hover:bg-flairy-accent transition-all shadow-md">
+                        무료 평생 마스터 패스 발급하기
                     </button>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- 마지막 메인 행동 촉구 (CTA Banner) -->
-    <section class="py-24 max-w-5xl mx-auto px-6 relative">
-        <div class="absolute inset-0 rounded-3xl bg-gradient-to-br from-flairy-primary/10 via-[#403c58]/40 to-flairy-card border border-white/[0.08] pointer-events-none"></div>
-        
-        <!-- 별빛 파티클 분위기 -->
-        <div class="absolute top-10 left-10 text-flairy-secondary animate-pulse-slow">✦</div>
-        <div class="absolute bottom-10 right-10 text-flairy-accent animate-pulse-slow">✦</div>
-        <div class="absolute top-1/2 right-20 text-flairy-primary animate-pulse">✦</div>
+    <!-- [요구사항 2] 교차 섹션 7: 최종 메인 행동 촉구 -->
+    <section class="py-24 max-w-5xl mx-auto px-6 relative bg-white border border-slate-200 rounded-3xl shadow-xl my-16 overflow-hidden">
+        <div class="absolute -top-24 -left-24 w-52 h-52 bg-indigo-500/5 rounded-full blur-2xl"></div>
+        <div class="absolute -bottom-24 -right-24 w-52 h-52 bg-cyan-500/5 rounded-full blur-2xl"></div>
 
-        <div class="relative z-10 text-center max-w-2xl mx-auto space-y-8 py-8">
-            <h2 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">가장 가치 있는 것은<br>잊히지 않고 영원한 것</h2>
-            <p class="text-sm text-flairy-muted leading-relaxed font-light">
-                지금 바로 단 1분 만에 회원 가입 없이 사진 5장으로 나만의 고품격 3D 디지털 앨범을 만들어 보세요. 친구들이 깜짝 놀랄 만한 링크가 뚝딱 탄생합니다.
+        <div class="relative z-10 text-center max-w-2xl mx-auto space-y-8 py-4">
+            <h2 class="font-serif text-3xl md:text-4xl font-normal text-slate-900 leading-tight">
+                가장 가치 있는 것은<br><span class="italic text-indigo-500">잊히지 않고 영원히</span> 남는 것
+            </h2>
+            <p class="text-xs md:text-sm text-slate-400 leading-relaxed font-light font-sans">
+                지금 바로 별도의 회원 가입 절차 없이, 소중한 순간의 사진들을 올려 나만의 독자적인 3D 디지털 앨범으로 구성해 보세요. 지인과 가족들에게 잊지 못할 아날로그 감동의 선물이 전달됩니다.
             </p>
-            <button onclick="navigateToApp()" class="relative group overflow-hidden px-8 py-4 rounded-full text-sm font-bold tracking-wider text-white bg-gradient-to-r from-flairy-primary to-flairy-secondary shadow-glow-primary hover:scale-[1.03] transition-all duration-300">
-                <span class="relative z-10 flex items-center justify-center space-x-2">
-                    <span>지금 무료로 앨범 만들기</span>
-                    <i data-lucide="sparkles" class="w-4 h-4 text-amber-200"></i>
-                </span>
-                <div class="absolute inset-0 bg-gradient-to-r from-flairy-secondary to-flairy-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <button onclick="navigateToApp()" class="px-8 py-4 rounded-full text-xs font-bold tracking-widest text-white bg-flairy-accent hover:bg-flairy-accentHover border border-indigo-500/25 shadow-glow-indigo hover:scale-[1.03] transition-all duration-300">
+                지금 무료 앨범 제작하기
             </button>
         </div>
     </section>
 
-    <!-- 푸터 -->
-    <footer class="border-t border-white/[0.03] bg-flairy-bg py-16 text-xs text-flairy-muted">
-        <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12">
-            <!-- 브랜딩 -->
+    <!-- 푸터 (안정적인 클래식 소프트네이비 테마) -->
+    <footer class="border-t border-slate-800 bg-[#0E152B] py-16 text-xs text-slate-400">
+        <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 font-sans">
+            <!-- 로고 및 설명 -->
             <div class="space-y-4">
                 <a href="/" class="flex items-center space-x-2">
-                    <span class="text-xl font-bold font-sans text-white tracking-tight">flairy</span>
-                    <span class="text-lg text-flairy-secondary">✦</span>
+                    <span class="font-serif text-xl font-bold text-white italic">flairy</span>
+                    <span class="text-xs text-flairy-accent">✦</span>
                 </a>
-                <p class="leading-relaxed">추억을 다루는 하이엔드 3D 테크놀로지 스튜디오. 세상 모든 인연들의 빛나는 서사를 예술로 보존합니다.</p>
-                <p class="text-[10px] text-white/20">© 2026 Flairy Inc. All Rights Reserved.</p>
+                <p class="leading-relaxed font-light text-slate-300">모바일 일상 데이터를 고도화된 3D 지면 형태 및 사운드트랙 콘텐츠로 보존하는 감성 시스템 테크 스튜디오.</p>
+                <p class="text-[10px] text-slate-500 font-mono">© 2026 Flairy Inc. All Rights Reserved.</p>
             </div>
 
-            <!-- 고객 서비스 링크 -->
             <div class="space-y-3">
-                <h4 class="text-white font-bold tracking-widest uppercase">체험 서비스</h4>
-                <ul class="space-y-2">
-                    <li><a href="#simulator" class="hover:text-white transition-colors">3D 시뮬레이터</a></li>
-                    <li><a href="#theme" class="hover:text-white transition-colors">테마 오디오 룸</a></li>
-                    <li><a href="#features" class="hover:text-white transition-colors">기능 둘러보기</a></li>
+                <h4 class="text-white font-bold tracking-wider uppercase text-[10px]">시뮬레이션 체험</h4>
+                <ul class="space-y-2 font-light text-slate-400">
+                    <li><a href="#simulator" class="hover:text-flairy-accent transition-colors">3D 디지털 앨범 조작 체험</a></li>
+                    <li><a href="#theme" class="hover:text-flairy-accent transition-colors">테마 오디오 사운드 센터</a></li>
                 </ul>
             </div>
 
-            <!-- 정책 및 기타 -->
             <div class="space-y-3">
-                <h4 class="text-white font-bold tracking-widest uppercase">법적 고지</h4>
-                <ul class="space-y-2">
-                    <li><a href="#" class="hover:text-white transition-colors">이용 약관</a></li>
-                    <li><a href="#" class="hover:text-white transition-colors">개인정보 처리방침</a></li>
-                    <li><a href="#" class="hover:text-white transition-colors">마케팅 제휴 및 파트너십</a></li>
+                <h4 class="text-white font-bold tracking-wider uppercase text-[10px]">개인 정보 보안</h4>
+                <ul class="space-y-2 font-light text-slate-400">
+                    <li><a href="#" class="hover:text-flairy-accent transition-colors">서비스 이용 약관</a></li>
+                    <li><a href="#" class="hover:text-flairy-accent transition-colors">개인 데이터 수집 세칙</a></li>
                 </ul>
             </div>
 
-            <!-- 소셜 정보 -->
             <div class="space-y-4">
-                <h4 class="text-white font-bold tracking-widest uppercase">커뮤니티 소식</h4>
-                <p class="leading-relaxed">인스타그램에서 @flairy.kr을 태그하고 매주 에디터가 선정하는 무료 시네마 포토 앨범 이벤트 혜택을 잡으세요.</p>
-                <div class="flex space-x-3 pt-2">
-                    <a href="https://flairy.kr" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 hover:text-white transition-colors">
+                <h4 class="text-white font-bold tracking-wider uppercase text-[10px]">스튜디오 채널</h4>
+                <p class="leading-relaxed font-light text-slate-400">매달 최고의 예술 3D 디지털 앨범에 당선되어 실물 무상 페이퍼 도록을 받아보세요.</p>
+                <div class="flex space-x-3 pt-1">
+                    <a href="https://flairy.kr" class="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 hover:text-white transition-all">
                         <i data-lucide="instagram" class="w-4 h-4"></i>
                     </a>
-                    <a href="https://flairy.kr" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 hover:text-white transition-colors">
+                    <a href="https://flairy.kr" class="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 hover:text-white transition-all">
                         <i data-lucide="globe" class="w-4 h-4"></i>
                     </a>
                 </div>

@@ -8,55 +8,54 @@
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,500&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Noto+Serif+KR:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
       theme: {
         extend: {
           fontFamily: {
             sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
-            serif: ['Playfair Display', 'serif'],
+            serif: ['Playfair Display', 'Noto Serif KR', 'serif'],
           },
           colors: {
             flairy: {
-              bg: '#33303c',
-              section: '#373541',
-              card: '#3b3848',
-              border: '#474360',
-              primary: '#6d57ff',
-              secondary: '#a855f7',
-              accent: '#f43f5e',
-              text: '#f3f4f6',
-              muted: '#9ca3af',
+              indigo: '#151E3D',
+              indigoLight: '#222D4E',
+              indigoSlate: '#313F70',
+              coolBg: '#F8FAFC',
+              coolBorder: '#E2E8F0',
+              accent: '#4F46E5',
+              accentHover: '#4338CA',
+              accentLight: '#EEF2FF',
+              textDark: '#0F172A',
+              textMuted: '#64748B',
             }
           },
           boxShadow: {
-            'glow-primary': '0 0 25px -5px rgba(109, 87, 255, 0.4)',
-            'glow-secondary': '0 0 25px -5px rgba(168, 85, 247, 0.4)',
-            'glow-accent': '0 0 20px -5px rgba(244, 63, 94, 0.3)',
+            'glow-indigo': '0 10px 30px -5px rgba(79, 70, 229, 0.35)',
+            'premium': '0 25px 50px -12px rgba(21, 30, 61, 0.08)',
+            'inner-soft': 'inset 0 2px 8px rgba(0, 0, 0, 0.03)',
           },
           animation: {
-            'float-slow': 'float 8s ease-in-out infinite',
-            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            'spin-slow': 'spin 12s linear infinite',
-            'bounce-slow': 'bounce 3s ease-in-out infinite',
+            'spin-slow': 'spin 20s linear infinite',
+            'float': 'float 6s ease-in-out infinite',
           },
           keyframes: {
             float: {
-              '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
-              '50%': { transform: 'translateY(-15px) rotate(3deg)' },
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
             }
           }
         }
       }
     };
   </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="/static/css/landing.css">
   {% block head %}{% endblock %}
 </head>
-<body class="bg-flairy-bg text-flairy-text font-sans selection:bg-flairy-primary/30 selection:text-white overflow-x-hidden">
+<body class="bg-[#FAFBFD] text-flairy-textDark font-sans selection:bg-flairy-accent/20 selection:text-flairy-accentHover overflow-x-hidden">
   {% block content %}{% endblock %}
   <script>
   (function () {
