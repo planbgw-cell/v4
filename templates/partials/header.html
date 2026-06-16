@@ -1,23 +1,20 @@
-{# 공통 상단: Flairy 브랜드 + 인증 상태에 따른 우측 메뉴 (영문 숏텍스트, 반응형 한 줄) #}
-<header class="flairy-site-header flex items-center justify-between py-3 px-2 sm:px-4 bg-white border-b border-gray-100 whitespace-nowrap mb-4">
-  <div class="flex items-center space-x-1.5 min-w-0 flex-shrink-0">
-    <a href="/" class="text-xl font-bold text-indigo-600 tracking-tight">Flairy</a>
-    <span class="hidden xs:inline-block text-[11px] text-gray-400 font-normal tracking-wide uppercase">Digital Album</span>
-  </div>
+{# 공통 상단: Flairy 브랜드 + 인증 상태에 따른 우측 메뉴 (랜딩 nav와 동일 #151E3D) #}
+<header class="flairy-site-header flex items-center justify-between py-3 px-2 sm:px-4 bg-[#151E3D] border-b border-white/10 whitespace-nowrap mb-4">
+  {% include "partials/flairy_logo.html" %}
 
   <nav class="flairy-header-nav flex items-center space-x-1.5 sm:space-x-3 md:space-x-5 text-xs sm:text-sm flex-shrink-0">
-    <a href="/qna" class="font-medium text-gray-600 hover:text-gray-900 tracking-tight py-1 px-1">
+    <a href="/qna" class="font-medium text-slate-200 hover:text-indigo-300 tracking-tight py-1 px-1 transition">
       Q&amp;A
     </a>
     {% if current_user %}
-    <a href="/mypage" class="font-medium text-gray-700 border border-gray-200 rounded-md px-1.5 py-1.5 sm:px-3.5 sm:py-2 bg-white hover:bg-gray-50 tracking-tight transition">
+    <a href="/mypage" class="font-medium text-slate-200 border border-white/15 rounded-md px-1.5 py-1.5 sm:px-3.5 sm:py-2 bg-white/5 hover:bg-white/10 tracking-tight transition">
       My Album
     </a>
-    <a href="/auth/logout" class="font-medium text-white bg-indigo-600 rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-indigo-700 tracking-tight transition">
+    <a href="/auth/logout" class="font-medium text-white bg-[#4F46E5] rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-[#4338CA] tracking-tight transition">
       Sign Out
     </a>
     {% else %}
-    <button type="button" id="headerAuthBtn" class="font-medium text-white bg-indigo-600 rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-indigo-700 tracking-tight transition">
+    <button type="button" id="headerAuthBtn" class="font-medium text-white bg-[#4F46E5] rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-[#4338CA] tracking-tight transition">
       Sign In
     </button>
     {% endif %}
