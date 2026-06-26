@@ -12,7 +12,9 @@
     data-share-image="{{ share_meta.image if share_meta is defined and share_meta.image else '' }}"
   >공유하기</button>
   {% if project_type == 'video' and video_url is defined and video_url %}
-  <a href="{{ video_url }}" download class="btn-secondary-viewer" id="btnDownload">고화질 다운로드</a>
+  <a href="/api/v1/projects/{{ project_id }}/download-video" download="{{ video_download_filename | default('flairy_highlight.mp4') }}" class="btn-secondary-viewer" id="btnDownload">고화질 다운로드</a>
+  {% elif project_type == 'album' %}
+  <a href="/api/v1/projects/{{ project_id }}/export-html" class="btn-secondary-viewer" id="btnDownload" download="{{ album_download_filename | default('flairy_album.html') }}">고화질 다운로드</a>
   {% else %}
   <span class="btn-secondary-viewer opacity-60 cursor-not-allowed" title="준비 중">고화질 다운로드 (준비중)</span>
   {% endif %}

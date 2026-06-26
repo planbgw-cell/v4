@@ -64,7 +64,9 @@ from app.routes import analytics as analytics_router
 from app.routes import admin_analytics as admin_analytics_router
 from app.routes import notices as notices_router
 from app.routes import inquiries as inquiries_router
+from app.routes import storage as storage_router
 from app.config import get_public_base_url
+from app.services.portable_album_compiler import safe_album_export_filename, safe_highlight_export_filename
 from app.models import Notice
 from app.storage import get_project_final_dir
 
@@ -114,6 +116,7 @@ app.include_router(analytics_router.router)
 app.include_router(admin_analytics_router.router)
 app.include_router(notices_router.router)
 app.include_router(inquiries_router.router)
+app.include_router(storage_router.router)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -303,6 +306,15 @@ async def create_page(request: Request, current_user=Depends(get_current_user_op
         db.close()
 
 
+@app.get("/guide", response_class=HTMLResponse)
+async def guide_page(request: Request, current_user=Depends(get_current_user_optional)):
+    """이용안내(How It Works) 가이드 페이지."""
+    return templates.TemplateResponse(
+        "guide.html",
+        {"request": request, "current_user": current_user},
+    )
+
+
 @app.get("/mypage", response_class=HTMLResponse)
 async def mypage_page(
     request: Request,
@@ -456,6 +468,9 @@ async def viewer_page(
     }
     if type == "video":
         ctx["video_url"] = video_url
+        ctx["video_download_filename"] = safe_highlight_export_filename(title)
+    if type == "album":
+        ctx["album_download_filename"] = safe_album_export_filename(title)
 
     # HTMX 요청 시 조각만 반환 (전체 html/body 중복 방지, 스타일은 조각 내부에 포함)
     if request.headers.get("HX-Request"):
@@ -516,6 +531,9 @@ async def share_viewer_page(
     }
     if type == "video":
         ctx["video_url"] = video_url
+        ctx["video_download_filename"] = safe_highlight_export_filename(title)
+    if type == "album":
+        ctx["album_download_filename"] = safe_album_export_filename(title)
     template = "viewer.html" if type == "video" else "viewer_album.html"
     return templates.TemplateResponse(template, ctx)
 

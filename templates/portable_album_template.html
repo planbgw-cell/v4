@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flairy Digital Album</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #F8FAFC;
+      color: #1e293b;
+    }
+    .hidden { display: none !important; }
+    .album-viewer-page {
+      width: 100%;
+      max-width: min(900px, 95vw);
+      margin: 0 auto;
+      padding: 1.5rem 1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .album-viewer-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      text-align: center;
+      margin: 0 0 1rem;
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #loadingState, #errorState {
+      text-align: center;
+      padding: 4rem 1rem;
+    }
+    #errorState { color: #dc2626; }
+    .offline-video-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.72);
+      color: #f8fafc;
+      font-size: 0.875rem;
+      text-align: center;
+      padding: 1rem;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .slot-video-stack { position: relative; }
+    .slot-video-stack.show-offline-hint .offline-video-overlay { display: flex; }
+    /* {{ INLINE_CSS }} */
+  </style>
+</head>
+<body>
+  <main id="viewerRoot" class="album-viewer-page">
+    <h1 class="album-viewer-title">Digital Album</h1>
+    <div id="flipbookRoot" class="flipbook-wrap" style="width: 100%;">
+      <div id="loadingState">앨범을 불러오는 중...</div>
+      <div id="errorState" class="hidden">앨범을 불러올 수 없습니다.</div>
+      <div id="flipbookState" class="hidden album-viewer-layout">
+        <div class="album-top-section">
+          <div class="flipbook-inner">
+            <div id="clickPrev" class="click-zone prev" title="이전"></div>
+            <div id="clickNext" class="click-zone next" title="다음"></div>
+            <div id="bookContainer" class="book-container book-mode">
+              <div class="book-floor" aria-hidden="true"></div>
+              <div id="bookBody" class="book-body"></div>
+            </div>
+            <div id="pageDisplay" class="page-display single-mode"></div>
+          </div>
+        </div>
+        <div class="album-bottom-section">
+          <div class="thumbnail-bar-wrapper">
+            <div id="thumbBar" class="thumb-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    // {{ ALBUM_DATA_INJECT }}
+  </script>
+  <script>
+    // {{ INLINE_JS }}
+  </script>
+  <script>
+  (function () {
+    var hint = (typeof FlairyData !== "undefined" && FlairyData.offlineVideoHint) || "영상 재생에는 인터넷 연결이 필요합니다.";
+    function markOffline(stack) {
+      if (!stack || stack.classList.contains("show-offline-hint")) return;
+      stack.classList.add("show-offline-hint");
+      var ov = stack.querySelector(".offline-video-overlay");
+      if (ov && !ov.textContent) ov.textContent = hint;
+    }
+    function wireVideo(stack, video) {
+      if (!stack || !video || video.dataset.offlineWired) return;
+      video.dataset.offlineWired = "1";
+      if (!stack.querySelector(".offline-video-overlay")) {
+        var ov = document.createElement("div");
+        ov.className = "offline-video-overlay";
+        ov.textContent = hint;
+        stack.appendChild(ov);
+      }
+      if (navigator.onLine === false) markOffline(stack);
+      video.addEventListener("error", function () { markOffline(stack); });
+    }
+    function scan() {
+      document.querySelectorAll(".slot-video-stack").forEach(function (stack) {
+        var v = stack.querySelector("video.slot-video");
+        if (v) wireVideo(stack, v);
+      });
+    }
+    window.addEventListener("offline", scan);
+    document.addEventListener("DOMContentLoaded", function () {
+      scan();
+      new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+    });
+  })();
+  </script>
+</body>
+</html>

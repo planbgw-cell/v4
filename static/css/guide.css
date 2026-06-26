@@ -1,0 +1,25 @@
+/* Guide page utilities */
+.shadow-book {
+  box-shadow: 0 25px 50px -12px rgba(21, 30, 61, 0.12);
+}
+
+.guide-chip {
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  color: #64748B;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.guide-quick-link {
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  color: #161B30;
+  transition: border-color 0.2s, color 0.2s;
+}
+.guide-quick-link:hover {
+  border-color: #4F46E5;
+  color: #4F46E5;
+}
