@@ -146,6 +146,12 @@ async def google_site_verification():
     return FileResponse(STATIC_DIR / "googleeccc34be6d8b0e81.html")
 
 
+@app.get("/uptown", response_class=HTMLResponse, include_in_schema=False)
+async def uptown_calculator():
+    """(주)업타운 벤처투자 소득공제 계산기 정적 페이지."""
+    return FileResponse(STATIC_DIR / "uptown.html")
+
+
 def _mypage_thumbnail_url(project_id: UUID, first_media_path: str | None) -> str | None:
     """첫 미디어 경로로 썸네일 URL 생성 (마이페이지용)."""
     if not first_media_path:

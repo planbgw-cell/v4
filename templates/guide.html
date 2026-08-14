@@ -1,118 +1,150 @@
 {% extends "layouts/base.html" %}
-{% block title %}이용안내 - How It Works - Flairy{% endblock %}
+{% block title %}이용안내 - Flairy{% endblock %}
 {% block body_class %}bg-[#F8FAFC] text-[#161B30] min-h-screen{% endblock %}
 {% block head %}
   {{ super() }}
   <link rel="stylesheet" href="/static/css/guide.css">
-  <meta name="description" content="Flairy 디지털 앨범, AI/Basic 하이라이트 영상, 매직 링크 공유 방법을 안내합니다.">
+  <script src="/static/js/guide.js" defer></script>
+  <meta name="description" content="Flairy 추억 업로드, 3D 디지털 앨범, 하이라이트 영상, 공유·다운로드·매직링크 이용 방법을 안내합니다.">
 {% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
   {% include "partials/header.html" %}
 
-  {# Section 1: Hero & Quick Links #}
-  <section id="top" class="pt-8 pb-16 text-center border-b border-[#E2E8F0]">
-    <h1 class="font-serif text-3xl sm:text-4xl md:text-5xl font-semibold text-[#090D1C] tracking-tight leading-tight">
-      How to create your Flairy <span class="text-[#4F46E5]">✦</span>
+  {# Hero & 3-step story nav #}
+  <section id="top" class="pt-8 pb-10 text-center border-b border-[#E2E8F0]">
+    <h1 class="font-serif text-2xl sm:text-3xl md:text-4xl font-semibold text-[#090D1C] tracking-tight leading-snug">
+      당신의 추억을 가장 아름답게 만드는 <span class="text-[#4F46E5]">Flairy</span> 이용방법
     </h1>
-    <p class="mt-4 text-sm sm:text-base text-[#64748B] font-sans max-w-2xl mx-auto leading-relaxed">
-      갤러리 속 추억을 3D 디지털 앨범과 하이라이트 영상으로, 그리고 매직 링크로 아름답게 공유하는 방법을 안내합니다.
+    <p class="mt-4 text-sm sm:text-base text-[#64748B] font-sans max-w-3xl mx-auto leading-relaxed">
+      갤러리 속 추억을 3D 디지털 앨범과 하이라이트 영상으로, 그리고 공유하기로 아름답게 전달하는 방법을 안내합니다.<br class="hidden sm:inline">
+      PC에서도 모바일에서도 당신의 추억을 느껴보세요.
     </p>
-    <nav class="mt-8 flex flex-wrap items-center justify-center gap-3" aria-label="가이드 빠른 이동">
-      <a href="#digital-album" class="guide-quick-link rounded-full px-4 py-2 text-xs sm:text-sm font-medium tracking-tight">
-        Digital Album
+    <nav class="guide-story-nav mt-10" aria-label="이용안내 단계">
+      <a href="#upload-flow" class="guide-story-nav__link" data-guide-section="upload-flow">
+        추억업로드 (ai방식, 베이직방식)
       </a>
-      <a href="#video-engine" class="guide-quick-link rounded-full px-4 py-2 text-xs sm:text-sm font-medium tracking-tight">
-        Video (AI vs Basic)
+      <a href="#outputs" class="guide-story-nav__link" data-guide-section="outputs">
+        디지털앨범, 하이라이트영상
       </a>
-      <a href="#share-magic" class="guide-quick-link rounded-full px-4 py-2 text-xs sm:text-sm font-medium tracking-tight">
-        Share
+      <a href="#share-magic" class="guide-story-nav__link" data-guide-section="share-magic">
+        공유하기, 다운로드, 매직링크
       </a>
     </nav>
   </section>
 
-  {# Section 2: Digital Album — 좌 이미지 / 우 글 #}
-  <section id="digital-album" class="py-16 border-b border-[#E2E8F0]">
-    <div class="flex flex-col md:flex-row md:items-center gap-10 md:gap-14">
+  {# Section 1: 추억업로드 — 좌 UI / 우 번호 목록 #}
+  <section id="upload-flow" class="guide-story-section py-16 border-b border-[#E2E8F0]" data-guide-section="upload-flow">
+    <div class="flex flex-col md:flex-row md:items-start gap-10 md:gap-12">
       <div class="w-full md:w-1/2 flex-shrink-0">
-        <img
-          src="/static/images/guide/album_mock.jpg"
-          alt="Flairy 디지털 앨범 목업"
-          class="w-full rounded-xl shadow-book object-cover aspect-[4/3]"
-          loading="lazy"
-        >
+        <div class="guide-screenshot-wrap">
+          <img
+            src="/static/images/guide/upload_preview.png"
+            alt="Flairy 추억 업로드 화면"
+            class="guide-screenshot guide-screenshot--cover w-full h-auto"
+            data-fallback-label="업로드 화면 미리보기 준비 중"
+            loading="lazy"
+          >
+          <div class="guide-img-fallback hidden" aria-hidden="true">업로드 화면 미리보기 준비 중</div>
+        </div>
       </div>
       <div class="w-full md:w-1/2 font-sans">
-        <h2 class="font-serif text-2xl sm:text-3xl font-semibold text-[#090D1C] tracking-tight leading-snug">
-          01 / Memories in a Masterpiece
-        </h2>
-        <p class="mt-4 text-[#161B30] leading-relaxed text-sm sm:text-base">
-          갤러리 속에 잠들어 있던 사진들을 터치 몇 번으로 실물 책을 펼쳐보는 듯한 고품격 3D 디지털 앨범으로 재탄생시킵니다.
-        </p>
-        <div class="mt-6 flex flex-wrap gap-2">
+        <div class="guide-instruction-box">
+          <h2 class="font-serif text-xl sm:text-2xl font-semibold text-[#090D1C] tracking-tight">
+            추억업로드 (ai방식, 베이직방식)
+          </h2>
+          <ol class="guide-step-list mt-5 space-y-3 text-sm sm:text-base text-[#161B30] leading-relaxed">
+            <li>사진이나 영상 파일을 드래그 앤 드롭으로 업로드합니다.</li>
+            <li>좌측 핸들 또는 위·아래 화살표로 미디어 순서를 조정합니다.</li>
+            <li><strong class="text-[#090D1C]">AI 방식:</strong> AI 서버가 미디어를 분석해 중복을 제거하고, 스토리를 구성하며 배열 순서를 결정합니다.</li>
+            <li>자막과 배경음악을 삽입합니다.</li>
+            <li><strong class="text-[#090D1C]">베이직 방식:</strong> 업로드한 순서대로 미디어가 나열되며, 화면 전환 효과만 적용됩니다.</li>
+          </ol>
+        </div>
+        <div class="mt-5 flex flex-wrap gap-2">
           <span class="guide-chip">JPEG</span>
           <span class="guide-chip">PNG</span>
           <span class="guide-chip">최대 30장</span>
+          <span class="guide-chip">AI 적용</span>
+          <span class="guide-chip">BASIC 적용</span>
         </div>
       </div>
     </div>
   </section>
 
-  {# Section 3: Video Engine — AI vs Basic 2분할 #}
-  <section id="video-engine" class="py-16 border-b border-[#E2E8F0]">
-    <div class="mb-10 text-center md:text-left">
-      <h2 class="font-serif text-2xl sm:text-3xl font-semibold text-[#090D1C] tracking-tight">
-        Video Engine
-      </h2>
-      <p class="mt-2 text-sm text-[#64748B]">AI 모드와 Basic 모드의 차이를 한눈에 비교해 보세요.</p>
-    </div>
-    <div class="grid md:grid-cols-2 gap-6">
-      <article class="border border-[#E2E8F0] rounded-xl bg-white p-6 flex flex-col">
-        <img
-          src="/static/images/guide/video_ai.jpg"
-          alt="AI Mode 하이라이트 영상 예시"
-          class="w-full rounded-xl shadow-book object-cover aspect-[4/3] mb-5"
-          loading="lazy"
-        >
-        <h3 class="font-serif text-xl font-semibold text-[#090D1C] tracking-tight">AI Mode</h3>
-        <p class="mt-3 text-sm text-[#161B30] leading-relaxed flex-1">
-          인공지능이 피사체의 중심과 그리드를 추적하여 동적인 카메라 무빙을 생성합니다. 음악의 비트에 맞춰 자동으로 컷이 전환되며, 감성적인 폴라로이드 콜라주 표지와 타이틀 자막이 자동으로 부여되는 스마트 프리미엄 모드입니다.
+  {# Section 2: 디지털앨범 + 하이라이트영상 — 2열 #}
+  <section id="outputs" class="guide-story-section py-16 border-b border-[#E2E8F0]" data-guide-section="outputs">
+    <div class="guide-outputs-grid">
+      <article class="guide-output-card">
+        <h3 class="font-serif text-xl sm:text-2xl font-semibold text-[#090D1C] tracking-tight">디지털앨범</h3>
+        <p class="mt-2 text-sm sm:text-base text-[#64748B] leading-relaxed">
+          사진과 동영상이 어우러진 나만의 포토북 앨범 생성
         </p>
+        <div class="guide-screenshot-wrap guide-screenshot-wrap--card group overflow-hidden rounded-xl mt-5">
+          <img
+            src="/static/images/guide/album_preview.jpg"
+            alt="Flairy 3D 포토북 앨범"
+            class="guide-screenshot guide-screenshot--card w-full h-full"
+            data-fallback-label="포토북 앨범 미리보기 준비 중"
+            loading="lazy"
+          >
+          <div class="guide-img-fallback hidden" aria-hidden="true">포토북 앨범 미리보기 준비 중</div>
+        </div>
       </article>
-      <article class="border border-[#E2E8F0] rounded-xl bg-white p-6 flex flex-col">
-        <img
-          src="/static/images/guide/video_basic.jpg"
-          alt="Basic Mode 슬라이드쇼 예시"
-          class="w-full rounded-xl shadow-book object-cover aspect-[4/3] mb-5"
-          loading="lazy"
-        >
-        <h3 class="font-serif text-xl font-semibold text-[#090D1C] tracking-tight">Basic Mode</h3>
-        <p class="mt-3 text-sm text-[#161B30] leading-relaxed flex-1">
-          원본의 감성을 그대로 유지하고 싶을 때 적합합니다. 유저가 업로드한 미디어 순서대로 정갈한 슬라이드쇼와 클래식한 전환 효과가 적용되는 정석적인 편집 모드입니다.
+      <article class="guide-output-card">
+        <h3 class="font-serif text-xl sm:text-2xl font-semibold text-[#090D1C] tracking-tight">하이라이트영상생성</h3>
+        <p class="mt-2 text-sm sm:text-base text-[#64748B] leading-relaxed">
+          사진과 영상들이 하나의 미디어로 어우러진 하이라이트 영상 생성
         </p>
+        <div class="guide-screenshot-wrap guide-screenshot-wrap--card group overflow-hidden rounded-xl mt-5 flex justify-center">
+          <img
+            src="/static/images/guide/video_preview.jpg"
+            alt="Flairy 시네마틱 영상 플레이어"
+            class="guide-screenshot guide-screenshot--card guide-screenshot--portrait w-full"
+            data-fallback-label="하이라이트 영상 미리보기 준비 중"
+            loading="lazy"
+          >
+          <div class="guide-img-fallback hidden" aria-hidden="true">하이라이트 영상 미리보기 준비 중</div>
+        </div>
       </article>
     </div>
   </section>
 
-  {# Section 4: Magic Link & Share — 좌 글 / 우 이미지 #}
-  <section id="share-magic" class="py-16">
-    <div class="flex flex-col md:flex-row-reverse md:items-center gap-10 md:gap-14">
+  {# Section 3: 공유·다운로드·매직링크 — 좌 UI / 우 3블록 #}
+  <section id="share-magic" class="guide-story-section py-16" data-guide-section="share-magic">
+    <div class="flex flex-col md:flex-row md:items-start gap-10 md:gap-12">
       <div class="w-full md:w-1/2 flex-shrink-0">
-        <img
-          src="/static/images/guide/kakao_share.jpg"
-          alt="카카오톡 공유 화면 예시"
-          class="w-full rounded-xl shadow-book object-cover aspect-[4/3]"
-          loading="lazy"
-        >
+        <div class="guide-screenshot-wrap">
+          <img
+            src="/static/images/guide/share_ui.png"
+            alt="Flairy 공유 및 하이브리드 다운로드 UI"
+            class="guide-screenshot guide-screenshot--contain w-full h-auto"
+            data-fallback-label="공유 UI 미리보기 준비 중"
+            loading="lazy"
+          >
+          <div class="guide-img-fallback hidden" aria-hidden="true">공유 UI 미리보기 준비 중</div>
+        </div>
       </div>
-      <div class="w-full md:w-1/2 font-sans">
-        <h2 class="font-serif text-2xl sm:text-3xl font-semibold text-[#090D1C] tracking-tight leading-snug">
-          02 / Share the Emotion
-        </h2>
-        <p class="mt-4 text-[#161B30] leading-relaxed text-sm sm:text-base">
-          제작이 시작되면 고유한 [매직 링크] 주소가 발급됩니다. 렌더링 중(약 5분)에는 창을 닫으셔도 안전하며, 완성이 끝난 앨범은 카카오톡 공유하기를 통해 친구와 가족에게 가장 아름다운 비주얼(콜라주 커버) 인터페이스 형태로 즉시 전달할 수 있습니다.
-        </p>
+      <div class="w-full md:w-1/2 font-sans guide-feature-list">
+        <div class="guide-feature-item">
+          <h4 class="font-serif text-lg sm:text-xl font-semibold text-[#090D1C] tracking-tight">공유하기</h4>
+          <p class="mt-2 text-sm sm:text-base text-[#161B30] leading-relaxed">
+            포토북 앨범이나 하이라이트영상을 마이페이지에서 공유하기로 SNS상에 어디나 링크 공유가 가능합니다.
+          </p>
+        </div>
+        <div class="guide-feature-item">
+          <h4 class="font-serif text-lg sm:text-xl font-semibold text-[#090D1C] tracking-tight">고화질 다운로드</h4>
+          <p class="mt-2 text-sm sm:text-base text-[#161B30] leading-relaxed">
+            고화질 영상형태로 하이라이트 영상과 html 형태의 포토북 파일을 다운로드하여 평생 소장 하실 수 있습니다.
+          </p>
+        </div>
+        <div class="guide-feature-item">
+          <h4 class="font-serif text-lg sm:text-xl font-semibold text-[#090D1C] tracking-tight">매직링크</h4>
+          <p class="mt-2 text-sm sm:text-base text-[#161B30] leading-relaxed">
+            영상을 생성하는 동안에도 기다리실 필요 없이 브라우저를 닫고 나중에 접속하셔도 결과를 확인하실 수 있도록 매직링크 주소를 드립니다.
+          </p>
+        </div>
       </div>
     </div>
   </section>

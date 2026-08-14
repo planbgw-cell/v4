@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>(주)업타운 벤처투자 소득공제 계산기</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .calculator-card { background: #ffffff; max-width: 480px; width: 100%; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 25px; box-sizing: border-box; }
+        .title { color: #0f2c59; font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 5px; }
+        .subtitle { color: #666; font-size: 13px; text-align: center; margin-bottom: 25px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-size: 14px; font-weight: bold; color: #333; margin-bottom: 8px; }
+        select, input[type="number"] { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; box-sizing: border-box; }
+        .result-box { background-color: #f8faff; border: 1px solid #e1e8f5; border-radius: 12px; padding: 20px; margin-top: 25px; }
+        .result-title { font-size: 15px; font-weight: bold; color: #0f2c59; margin-bottom: 15px; text-align: center; border-bottom: 1px solid #e1e8f5; padding-bottom: 10px; }
+        .result-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; color: #555; }
+        .result-row.highlight { font-size: 18px; font-weight: bold; color: #d32f2f; margin-top: 15px; padding-top: 10px; border-top: 1px dotted #ccc; }
+        .btn-submit { background-color: #0f2c59; color: white; text-align: center; padding: 14px; border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer; text-decoration: none; display: block; }
+        .btn-submit:hover { background-color: #1e447b; }
+    </style>
+</head>
+<body>
+
+<div class="calculator-card">
+    <div class="title">🏢 (주)업타운 절세 시뮬레이터</div>
+    <div class="subtitle">벤처기업 투자에 따른 나의 예상 환급액 계산하기</div>
+
+    <!-- 입력부 -->
+    <div class="form-group">
+        <label for="income">나의 대략적인 연봉 (과세표준 기준)</label>
+        <select id="income" onchange="calculateTax()">
+            <option value="0.154">4,600만 원 이하 (세율 15.4%)</option>
+            <option value="0.264" selected>4,600만 ~ 8,800만 원 이하 (세율 26.4%)</option>
+            <option value="0.385">8,800만 ~ 1억 5,000만 원 이하 (세율 38.5%)</option>
+            <option value="0.418">1억 5,000만 ~ 3억 원 이하 (세율 41.8%)</option>
+            <option value="0.44">3억 원 초과 (세율 44.0%~)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="invest">투자 희망 금액 (만 원 단위)</label>
+        <input type="number" id="invest" value="3000" min="500" max="10000" step="100" oninput="calculateTax()">
+    </div>
+
+    <!-- 결과 출력부 -->
+    <div class="result-box">
+        <div class="result-title">💡 나의 예상 투자 혜택 분석</div>
+        <div class="result-row">
+            <span>총 소득공제 대상 금액:</span>
+            <span id="deduction-val" style="font-weight: bold; color:#333;">3,000 만 원</span>
+        </div>
+        <div class="result-row">
+            <span>지방소득세 포함 환급세율:</span>
+            <span id="rate-val" style="font-weight: bold; color:#333;">26.4%</span>
+        </div>
+        <div class="result-row highlight">
+            <span>최종 예상 환급액:</span>
+            <span id="total-refund">약 792만 원</span>
+        </div>
+        <div class="result-row" style="margin-top:5px; font-size:12px; color:#888; justify-content: flex-end;">
+            (투자 즉시 실질 수익률: <span id="yield-val" style="font-weight:bold; color:#2e7d32;">26.4%</span> 확보 효과)
+        </div>
+    </div>
+
+    <!-- 수정된 유선전화 및 버튼명 반영 -->
+    <a href="tel:031-786-0070" class="btn-submit">투자상담하기</a>
+</div>
+
+<script>
+function calculateTax() {
+    const rate = parseFloat(document.getElementById('income').value);
+    let invest = parseFloat(document.getElementById('invest').value);
+
+    if (isNaN(invest) || invest < 0) invest = 0;
+
+    // 벤처투자 소득공제 구간 로직
+    let deduction = 0;
+    if (invest <= 3000) {
+        deduction = invest; // 3천 이하 100%
+    } else if (invest <= 5000) {
+        deduction = 3000 + (invest - 3000) * 0.7; // 3천~5천 70%
+    } else {
+        deduction = 3000 + 1400 + (invest - 5000) * 0.3; // 5천 초과 30%
+    }
+
+    const refund = deduction * rate;
+    const effectiveYield = (refund / invest) * 100;
+
+    // 화면에 반영
+    document.getElementById('deduction-val').innerText = Math.round(deduction).toLocaleString() + " 만 원";
+    document.getElementById('rate-val').innerText = (rate * 100).toFixed(1) + "%";
+    document.getElementById('total-refund').innerText = "약 " + Math.round(refund).toLocaleString() + " 만 원";
+    document.getElementById('yield-val').innerText = isNaN(effectiveYield) ? "0%" : effectiveYield.toFixed(1) + "%";
+}
+// 초기 실행
+calculateTax();
+</script>
+
+</body>
+</html>
