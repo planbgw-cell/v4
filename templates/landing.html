@@ -72,7 +72,7 @@
 
                 <!-- 메인 CTA 버튼 콤보 -->
                 <div class="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
-                    <button onclick="navigateToApp()" class="w-full sm:w-auto px-8 py-4 rounded-full text-xs font-extrabold tracking-wider text-white bg-flairy-accent hover:bg-flairy-accentHover shadow-glow-indigo hover:scale-[1.03] transition-all duration-300">
+                    <button type="button" onclick="navigateToApp()" class="w-full sm:w-auto px-8 py-4 rounded-full text-xs font-extrabold tracking-wider text-white bg-[#4F46E5] hover:bg-[#4338CA] shadow-[0_10px_30px_-5px_rgba(79,70,229,0.35)] hover:scale-[1.03] transition-all duration-300">
                         <span class="flex items-center justify-center space-x-2">
                             <span>지금 무료 제작하기</span>
                             <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -161,7 +161,10 @@
 
                 <!-- 3D 앨범 가상 공간 -->
                 <div class="book-container py-6 relative z-10">
-                    <div id="hero-book" class="book shadow-premium">
+                    <div id="hero-book-stage" class="hero-book-stage relative mx-auto">
+                        <button type="button" id="simClickPrev" class="sim-click-zone prev" aria-label="이전 페이지"></button>
+                        <button type="button" id="simClickNext" class="sim-click-zone next" aria-label="다음 페이지"></button>
+                        <div id="hero-book" class="book shadow-premium">
                         <!-- PAGE 1 (Cover - 살짝 톤업되어 매끄러워진 프러시안 네이비 양장 하드커버) -->
                         <div class="page z-40" id="p1">
                             <div class="page-face page-front bg-gradient-to-br from-[#151E3D] to-slate-700 border-r border-white/10 flex flex-col justify-between p-8 text-white">
@@ -230,16 +233,17 @@
                             </div>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <!-- 3D 앨범 방향키 콘트롤러 (시크한 실버/인디고 조작계) -->
                 <div class="flex items-center space-x-6 mt-6 relative z-20 bg-white border border-slate-200 rounded-full px-5 py-2.5 shadow-md">
-                    <button onclick="prevPage()" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200">
-                        <i data-lucide="chevron-left" class="w-4.5 h-4.5"></i>
+                    <button type="button" id="simPrevBtn" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200" aria-label="이전 페이지">
+                        <i data-lucide="chevron-left" class="w-4.5 h-4.5 pointer-events-none"></i>
                     </button>
                     <span id="page-indicator" class="text-[11px] font-mono font-extrabold tracking-wider text-slate-800">COVER / PAGE 1</span>
-                    <button onclick="nextPage()" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200">
-                        <i data-lucide="chevron-right" class="w-4.5 h-4.5"></i>
+                    <button type="button" id="simNextBtn" class="w-9 h-9 rounded-full flex items-center justify-center border border-slate-200 hover:border-flairy-accent hover:bg-slate-50 text-slate-600 transition-all duration-200" aria-label="다음 페이지">
+                        <i data-lucide="chevron-right" class="w-4.5 h-4.5 pointer-events-none"></i>
                     </button>
                 </div>
             </div>
@@ -507,7 +511,7 @@
             <p class="text-xs md:text-sm text-slate-400 leading-relaxed font-light font-sans">
                 지금 바로 별도의 회원 가입 절차 없이, 소중한 순간의 사진들을 올려 나만의 독자적인 3D 디지털 앨범으로 구성해 보세요. 지인과 가족들에게 잊지 못할 아날로그 감동의 선물이 전달됩니다.
             </p>
-            <button onclick="navigateToApp()" class="px-8 py-4 rounded-full text-xs font-bold tracking-widest text-white bg-flairy-accent hover:bg-flairy-accentHover border border-indigo-500/25 shadow-glow-indigo hover:scale-[1.03] transition-all duration-300">
+            <button type="button" onclick="navigateToApp()" class="inline-flex items-center justify-center px-8 py-4 rounded-full text-xs font-bold tracking-widest text-white bg-[#4F46E5] hover:bg-[#4338CA] border border-indigo-500/30 shadow-[0_10px_30px_-5px_rgba(79,70,229,0.35)] hover:scale-[1.03] transition-all duration-300">
                 지금 무료 앨범 제작하기
             </button>
         </div>

@@ -3,8 +3,19 @@ lucide.createIcons();
 let currentPage = 1;
 const totalPage = 3;
 const pageIndicator = document.getElementById('page-indicator');
+const heroBook = document.getElementById('hero-book');
+const heroBookStage = document.getElementById('hero-book-stage');
+let isAnimating = false;
+const SHIFT_BEFORE_FLIP_MS = 160;
+const FLIP_BEFORE_CLOSE_MS = 500;
+
+function setBookOpen(open) {
+    if (heroBook) heroBook.classList.toggle('is-open', open);
+    if (heroBookStage) heroBookStage.classList.toggle('is-open', open);
+}
 
 function updatePageIndicator() {
+    if (!pageIndicator) return;
     if (currentPage === 1) {
         pageIndicator.textContent = "COVER / PAGE 1";
     } else if (currentPage === 2) {
@@ -14,31 +25,100 @@ function updatePageIndicator() {
     }
 }
 
-function nextPage() {
-    if (currentPage < totalPage) {
-        const pageEl = document.getElementById(`p${currentPage}`);
-        if (pageEl) {
-            pageEl.classList.add('flipped');
-            pageEl.style.zIndex = 10 + currentPage;
-        }
-        currentPage++;
-        updatePageIndicator();
-        triggerPaperSound();
+function flipPageForward(pageNum) {
+    const pageEl = document.getElementById(`p${pageNum}`);
+    if (pageEl) {
+        pageEl.classList.add('flipped');
+        pageEl.style.zIndex = 10 + pageNum;
     }
+    currentPage = pageNum + 1;
+    updatePageIndicator();
+    triggerPaperSound();
+}
+
+function flipPageBackward(pageNum) {
+    const pageEl = document.getElementById(`p${pageNum}`);
+    if (pageEl) {
+        pageEl.classList.remove('flipped');
+        pageEl.style.zIndex = 50 - pageNum;
+    }
+    currentPage = pageNum;
+    updatePageIndicator();
+    triggerPaperSound();
+}
+
+function nextPage() {
+    if (isAnimating || currentPage >= totalPage) return;
+
+    const pageNum = currentPage;
+    const leavingCover = pageNum === 1;
+
+    if (leavingCover) {
+        isAnimating = true;
+        setBookOpen(true);
+        setTimeout(function () {
+            flipPageForward(pageNum);
+            isAnimating = false;
+        }, SHIFT_BEFORE_FLIP_MS);
+        return;
+    }
+
+    flipPageForward(pageNum);
 }
 
 function prevPage() {
-    if (currentPage > 1) {
-        currentPage--;
-        const pageEl = document.getElementById(`p${currentPage}`);
-        if (pageEl) {
-            pageEl.classList.remove('flipped');
-            pageEl.style.zIndex = 50 - currentPage;
-        }
-        updatePageIndicator();
-        triggerPaperSound();
+    if (isAnimating || currentPage <= 1) return;
+
+    const returningToCover = currentPage === 2;
+    const pageNum = currentPage - 1;
+
+    if (returningToCover) {
+        isAnimating = true;
+        flipPageBackward(pageNum);
+        setTimeout(function () {
+            setBookOpen(false);
+            isAnimating = false;
+        }, FLIP_BEFORE_CLOSE_MS);
+        return;
     }
+
+    flipPageBackward(pageNum);
 }
+
+window.nextPage = nextPage;
+window.prevPage = prevPage;
+
+(function bindSimulatorNav() {
+    var prevBtn = document.getElementById('simPrevBtn');
+    var nextBtn = document.getElementById('simNextBtn');
+    var clickPrev = document.getElementById('simClickPrev');
+    var clickNext = document.getElementById('simClickNext');
+
+    function onPrev(e) {
+        if (e) e.preventDefault();
+        prevPage();
+    }
+    function onNext(e) {
+        if (e) e.preventDefault();
+        nextPage();
+    }
+
+    if (prevBtn) prevBtn.addEventListener('click', onPrev);
+    if (nextBtn) nextBtn.addEventListener('click', onNext);
+    if (clickPrev) clickPrev.addEventListener('click', onPrev);
+    if (clickNext) clickNext.addEventListener('click', onNext);
+
+    if (heroBook) {
+        heroBook.addEventListener('click', function (e) {
+            if (e.target.closest('button, a, input, label')) return;
+            var rect = heroBook.getBoundingClientRect();
+            var open = heroBook.classList.contains('is-open');
+            var spineX = open ? rect.left : (rect.left + rect.width / 2);
+            if (e.clientX < spineX) prevPage();
+            else nextPage();
+        });
+    }
+})();
 
 const sliderContainer = document.getElementById('slider-container');
 const dragBar = document.getElementById('drag-bar');

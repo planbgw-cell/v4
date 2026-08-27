@@ -9,6 +9,48 @@
     transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
     transform-style: preserve-3d;
 }
+.book.is-open {
+    transform: translateX(50%);
+}
+.hero-book-stage {
+    position: relative;
+    width: 320px;
+    height: 420px;
+}
+@media (min-width: 768px) {
+    .hero-book-stage {
+        width: 420px;
+        height: 520px;
+    }
+}
+.sim-click-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 60;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    appearance: none;
+}
+.sim-click-zone.prev {
+    left: 0;
+    width: 42%;
+}
+.sim-click-zone.next {
+    right: 0;
+    width: 42%;
+}
+.hero-book-stage.is-open .sim-click-zone.prev {
+    left: -50%;
+    width: 50%;
+}
+.hero-book-stage.is-open .sim-click-zone.next {
+    left: 50%;
+    right: auto;
+    width: 50%;
+}
 @media (min-width: 768px) {
     .book {
         width: 420px;
