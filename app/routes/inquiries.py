@@ -76,7 +76,7 @@ async def qna_write_page(
     current_user=Depends(get_current_user_optional),
 ):
     if current_user is None:
-        return RedirectResponse(url="/?login=qna", status_code=302)
+        return RedirectResponse(url="/login?next=/qna/new", status_code=302)
     return templates.TemplateResponse(
         "qna_write.html",
         {"request": request, "current_user": current_user},
@@ -91,7 +91,7 @@ async def qna_detail_page(
     current_user=Depends(get_current_user_optional),
 ):
     if current_user is None:
-        return RedirectResponse(url="/?login=qna", status_code=302)
+        return RedirectResponse(url="/login?next=/qna/" + inquiry_id, status_code=302)
     try:
         iid = UUID(inquiry_id)
     except ValueError:

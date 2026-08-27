@@ -1,4 +1,69 @@
-/* Internal header — landing nav와 동일한 슬레이트 네이비 (#151E3D) */
+/* 공통 고정 헤더 — 슬레이트 네이비 + 흰색 메뉴 */
+:root {
+  --flairy-header-h: 4rem;
+  --flairy-header-bg: #151E3D;
+  --flairy-gold: #d4af37;
+}
+
 .flairy-site-header {
-  background-color: #151E3D;
+  background-color: var(--flairy-header-bg) !important;
+  font-family: 'Inter', 'Noto Sans KR', sans-serif;
+  color: #ffffff;
+}
+
+body.flairy-has-fixed-header {
+  padding-top: var(--flairy-header-h);
+}
+
+.flairy-site-header a,
+.flairy-nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff !important;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.flairy-nav-link {
+  padding: 0.2rem 0.1rem 0.45rem;
+}
+
+.flairy-nav-link:hover,
+.flairy-nav-link.is-active,
+.flairy-site-header a:hover {
+  color: #c7d2fe !important;
+}
+
+.flairy-nav-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #a5b4fc;
+}
+
+.flairy-nav-link--mobile {
+  display: block;
+  padding: 0.7rem 0.25rem;
+}
+
+.flairy-nav-link--mobile.is-active::after {
+  display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

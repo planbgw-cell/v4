@@ -1,0 +1,151 @@
+{% extends "layouts/base.html" %}
+{% block title %}Sign In - Flairy{% endblock %}
+{% block head %}
+  {{ super() }}
+  <meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto px-4 py-12">
+  <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <h1 class="text-2xl font-semibold text-gray-900 mb-1">Sign In</h1>
+    <p class="text-sm text-gray-500 mb-6">로그인하면 My Album에서 작업을 이어갈 수 있습니다.</p>
+    <p id="loginFormError" class="hidden text-sm text-red-600 mb-3"></p>
+
+    <div id="loginPanel">
+      <form id="loginForm" class="space-y-3">
+        <input type="email" id="loginEmail" placeholder="이메일" required
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <input type="password" id="loginPassword" placeholder="비밀번호" required
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 rounded-lg bg-[#070A12] px-4 py-2 font-medium text-white hover:text-[#D4AF37]">
+            로그인
+          </button>
+          <button type="button" id="showSignupBtn" class="flex-1 rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50">
+            회원가입
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div id="signupPanel" class="hidden">
+      <form id="signupForm" class="space-y-3">
+        <input type="email" id="signupEmail" placeholder="이메일" required
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <input type="password" id="signupPassword" placeholder="비밀번호" required
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <input type="password" id="signupPasswordConfirm" placeholder="비밀번호 확인" required
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <button type="submit" class="w-full rounded-lg bg-[#070A12] px-4 py-2 font-medium text-white hover:text-[#D4AF37]">
+          가입하기
+        </button>
+        <button type="button" id="showLoginBtn" class="w-full text-sm text-indigo-600 hover:underline">
+          이미 계정이 있으신가요? 로그인
+        </button>
+      </form>
+    </div>
+
+    <div class="mt-6 border-t border-gray-200 pt-4">
+      <p class="mb-2 text-xs text-gray-500">소셜 로그인</p>
+      <div class="flex flex-col gap-2">
+        <a href="/api/auth/google/login?next={{ next_path }}" class="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50">
+          Google로 로그인
+        </a>
+        <a href="/api/auth/kakao/login?next={{ next_path }}" class="w-full flex items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 py-3 font-bold text-black hover:bg-[#FADA00]">
+          카카오로 로그인
+        </a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var nextPath = {{ next_path | tojson }};
+  var err = document.getElementById("loginFormError");
+  var loginPanel = document.getElementById("loginPanel");
+  var signupPanel = document.getElementById("signupPanel");
+
+  function showError(msg) {
+    if (!err) return;
+    err.textContent = msg || "";
+    err.classList.toggle("hidden", !msg);
+  }
+  function detailToMessage(d) {
+    if (!d || d.detail === undefined) return "요청에 실패했습니다.";
+    if (typeof d.detail === "string") return d.detail;
+    if (Array.isArray(d.detail) && d.detail[0]) return d.detail[0].msg || "입력값을 확인해 주세요.";
+    return "요청에 실패했습니다.";
+  }
+  function goNext() {
+    window.location.href = nextPath || "/storage";
+  }
+
+  document.getElementById("showSignupBtn").addEventListener("click", function () {
+    loginPanel.classList.add("hidden");
+    signupPanel.classList.remove("hidden");
+    showError("");
+  });
+  document.getElementById("showLoginBtn").addEventListener("click", function () {
+    signupPanel.classList.add("hidden");
+    loginPanel.classList.remove("hidden");
+    showError("");
+  });
+
+  document.getElementById("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    showError("");
+    fetch("/api/auth/login", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: document.getElementById("loginEmail").value,
+        password: document.getElementById("loginPassword").value
+      })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { showError(detailToMessage(d)); });
+      goNext();
+    }).catch(function () { showError("로그인 요청에 실패했습니다."); });
+  });
+
+  document.getElementById("signupForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    showError("");
+    var pwd = document.getElementById("signupPassword").value;
+    var confirm = document.getElementById("signupPasswordConfirm").value;
+    if (pwd !== confirm) {
+      showError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    fetch("/api/auth/signup", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: document.getElementById("signupEmail").value,
+        password: pwd
+      })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { showError(detailToMessage(d)); });
+      return fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: document.getElementById("signupEmail").value,
+          password: pwd
+        })
+      });
+    }).then(function (r) {
+      if (!r) return;
+      if (!r.ok) return r.json().then(function (d) { showError(detailToMessage(d)); });
+      goNext();
+    }).catch(function () { showError("회원가입 요청에 실패했습니다."); });
+  });
+})();
+</script>
+{% endblock %}

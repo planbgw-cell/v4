@@ -12,7 +12,6 @@
 
 {% block content %}
 {% include "partials/_viewer_styles.html" %}
-{% if mode != 'mypage' %}{% include "partials/viewer_header.html" %}{% endif %}
 <main id="viewerRoot" data-project-id="{{ project_id }}" data-project-type="{{ project_type }}" class="pb-10 min-h-screen bg-[#F8FAFC]">
   <div class="viewer-stage">
     <h1 class="text-lg font-semibold text-gray-800 text-center mb-2 truncate">{{ project_title }}</h1>

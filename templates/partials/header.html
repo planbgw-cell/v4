@@ -1,25 +1,67 @@
-{# 공통 상단: Flairy 브랜드 + 인증 상태에 따른 우측 메뉴 (랜딩 nav와 동일 #151E3D) #}
-<header class="flairy-site-header flex items-center justify-between py-3 px-2 sm:px-4 bg-[#151E3D] border-b border-white/10 whitespace-nowrap mb-4">
-  {% include "partials/flairy_logo.html" %}
+{# 전사 공통 상단 고정 헤더 (슬레이트 네이비 + 흰색 메뉴) #}
+{% set path = request.url.path %}
+{% set is_create = path == '/create' %}
+{% set is_portfolio = path == '/portfolio' or path.startswith('/portfolio/') %}
+{% set is_guide = path == '/guide' or path.startswith('/guide/') %}
+{% set is_qna = path == '/qna' or path.startswith('/qna/') %}
+{% set is_storage = path == '/storage' or path.startswith('/storage/') or path == '/mypage' or path.startswith('/mypage/') %}
+{% set is_login = path == '/login' or path.startswith('/login/') %}
+{% set login_next = path if path and path != '/login' else '/storage' %}
+<header class="flairy-site-header fixed top-0 left-0 right-0 z-50 bg-[#151E3D] border-b border-white/10 text-white">
+  <div class="h-16 px-3 sm:px-6 flex items-center justify-between max-w-[1440px] mx-auto gap-3">
+    <a href="/" class="flex items-center space-x-2 group min-w-0 flex-shrink-0 text-white" aria-label="Flairy 홈">
+      <span class="font-serif text-xl sm:text-2xl font-extrabold text-white tracking-tight italic transition-colors duration-300 group-hover:text-indigo-300">flairy</span>
+      <span class="text-base text-indigo-300 transition-transform duration-500 group-hover:rotate-180">✦</span>
+    </a>
 
-  <nav class="flairy-header-nav flex items-center space-x-1.5 sm:space-x-3 md:space-x-5 text-xs sm:text-sm flex-shrink-0">
-    <a href="/guide" class="font-medium text-slate-200 hover:text-indigo-300 tracking-tight py-1 px-1 transition">
-      Guide
-    </a>
-    <a href="/qna" class="font-medium text-slate-200 hover:text-indigo-300 tracking-tight py-1 px-1 transition">
-      Q&amp;A
-    </a>
-    {% if current_user %}
-    <a href="/mypage" class="font-medium text-slate-200 border border-white/15 rounded-md px-1.5 py-1.5 sm:px-3.5 sm:py-2 bg-white/5 hover:bg-white/10 tracking-tight transition">
-      My Album
-    </a>
-    <a href="/auth/logout" class="font-medium text-white bg-[#4F46E5] rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-[#4338CA] tracking-tight transition">
-      Sign Out
-    </a>
-    {% else %}
-    <button type="button" id="headerAuthBtn" class="font-medium text-white bg-[#4F46E5] rounded-md px-2 py-1.5 sm:px-3.5 sm:py-2 hover:bg-[#4338CA] tracking-tight transition">
-      Sign In
-    </button>
-    {% endif %}
-  </nav>
+    <nav class="flairy-header-nav hidden md:flex items-center space-x-5 lg:space-x-8 text-sm flex-shrink-0 text-white" aria-label="주요 메뉴">
+      <a href="/create" class="flairy-nav-link text-white {% if is_create %}is-active{% endif %}">Create</a>
+      <a href="/portfolio" class="flairy-nav-link text-white {% if is_portfolio %}is-active{% endif %}">Portfolio</a>
+      <a href="/guide" class="flairy-nav-link text-white {% if is_guide %}is-active{% endif %}">Guide</a>
+      <a href="/qna" class="flairy-nav-link text-white {% if is_qna %}is-active{% endif %}">Q&amp;A</a>
+    </nav>
+
+    <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0 text-white">
+      {% if current_user %}
+      <a href="/storage" class="flairy-nav-link text-white {% if is_storage %}is-active{% endif %}">My Album</a>
+      <a href="/auth/logout" class="hidden sm:inline-flex font-medium text-white border border-white/25 rounded-md px-3 py-1.5 text-xs sm:text-sm hover:text-indigo-200 hover:border-indigo-300 tracking-tight transition">
+        Sign Out
+      </a>
+      {% else %}
+      <a href="/login?next={{ login_next | urlencode }}" class="flairy-nav-link text-white {% if is_login %}is-active{% endif %}">Sign In</a>
+      {% endif %}
+      <button type="button" id="flairyNavToggle" class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-white hover:text-indigo-200 border border-white/25" aria-expanded="false" aria-controls="flairyMobileNav" aria-label="메뉴 열기">
+        <span class="sr-only">메뉴</span>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="flairyMobileNav" class="hidden md:hidden border-t border-white/10 bg-[#151E3D]">
+    <nav class="px-4 py-3 flex flex-col gap-1 text-sm" aria-label="모바일 메뉴">
+      <a href="/create" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_create %}is-active{% endif %}">Create</a>
+      <a href="/portfolio" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_portfolio %}is-active{% endif %}">Portfolio</a>
+      <a href="/guide" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_guide %}is-active{% endif %}">Guide</a>
+      <a href="/qna" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_qna %}is-active{% endif %}">Q&amp;A</a>
+      {% if current_user %}
+      <a href="/storage" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_storage %}is-active{% endif %}">My Album</a>
+      <a href="/auth/logout" class="flairy-nav-link flairy-nav-link--mobile text-white">Sign Out</a>
+      {% else %}
+      <a href="/login?next={{ login_next | urlencode }}" class="flairy-nav-link flairy-nav-link--mobile text-white {% if is_login %}is-active{% endif %}">Sign In</a>
+      {% endif %}
+    </nav>
+  </div>
 </header>
+<script>
+(function () {
+  var btn = document.getElementById("flairyNavToggle");
+  var panel = document.getElementById("flairyMobileNav");
+  if (!btn || !panel) return;
+  btn.addEventListener("click", function () {
+    var open = panel.classList.toggle("hidden") === false;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
+</script>

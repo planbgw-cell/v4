@@ -17,6 +17,11 @@
             sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
             serif: ['Playfair Display', 'Noto Serif KR', 'serif'],
           },
+          colors: {
+            flairy: {
+              gold: '#D4AF37',
+            },
+          },
           screens: {
             xs: '480px',
           },
@@ -28,7 +33,7 @@
   <link rel="stylesheet" href="/static/css/internal.css">
   <style>
     body { font-family: 'Inter', 'Noto Sans KR', sans-serif; overflow-x: hidden; width: 100%; max-width: 100vw; }
-    .flairy-site-header { font-family: 'Inter', 'Noto Sans KR', sans-serif; background-color: #151E3D; }
+    .flairy-site-header { font-family: 'Inter', 'Noto Sans KR', sans-serif; background-color: #151E3D; color: #fff; }
     @media (max-width: 400px) {
       .flairy-header-nav { column-gap: 0.25rem; }
       .flairy-header-nav a,
@@ -100,7 +105,10 @@
   </style>
   {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}">
+<body class="flairy-has-fixed-header {% block body_class %}bg-gray-50 text-gray-800 min-h-screen{% endblock %}">
+  {% block site_header %}
+    {% include "partials/header.html" %}
+  {% endblock %}
   {% block content %}{% endblock %}
   <script>
   (function () {

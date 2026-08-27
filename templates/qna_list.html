@@ -2,7 +2,6 @@
 {% block title %}묻고답하기 - Flairy{% endblock %}
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-6">
-  {% include "partials/header.html" %}
 
   <section class="mt-6 mb-4 flex flex-wrap items-center justify-between gap-3">
     <div>
@@ -20,9 +19,9 @@
   <section class="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
     <p class="text-gray-800 font-medium mb-2">문의는 로그인 회원만 작성할 수 있습니다.</p>
     <p class="text-sm text-gray-600 mb-4">로그인 후 나의 문의 내역을 확인하고 새 문의를 등록할 수 있습니다.</p>
-    <button type="button" id="qnaLoginBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+    <a href="/login?next=/qna" class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
       로그인하기
-    </button>
+    </a>
   </section>
   {% else %}
   <section class="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -74,16 +73,4 @@
     </a>
   </div>
 </div>
-{% include "partials/auth_modal.html" %}
-{% endblock %}
-{% block scripts %}
-<script>
-(function () {
-  var btn = document.getElementById("qnaLoginBtn");
-  var headerAuthBtn = document.getElementById("headerAuthBtn");
-  if (btn && headerAuthBtn) {
-    btn.addEventListener("click", function () { headerAuthBtn.click(); });
-  }
-})();
-</script>
 {% endblock %}

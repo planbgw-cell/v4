@@ -29,6 +29,7 @@
               accentLight: '#EEF2FF',
               textDark: '#0F172A',
               textMuted: '#64748B',
+              gold: '#D4AF37',
             }
           },
           boxShadow: {
@@ -52,10 +53,12 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/css/internal.css">
   <link rel="stylesheet" href="/static/css/landing.css">
   {% block head %}{% endblock %}
 </head>
-<body class="bg-[#FAFBFD] text-flairy-textDark font-sans selection:bg-flairy-accent/20 selection:text-flairy-accentHover overflow-x-hidden">
+<body class="flairy-has-fixed-header bg-[#FAFBFD] text-flairy-textDark font-sans selection:bg-flairy-accent/20 selection:text-flairy-accentHover overflow-x-hidden">
+  {% include "partials/header.html" %}
   {% block content %}{% endblock %}
   <script>
   (function () {

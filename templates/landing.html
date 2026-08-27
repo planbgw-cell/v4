@@ -19,7 +19,7 @@
 
 {% block content %}
 {% if latest_notice %}
-<div class="fixed top-0 left-0 w-full z-[60] bg-gray-900/95 text-white text-xs sm:text-sm py-2 px-4 flex items-center justify-between border-b border-white/5">
+<div class="fixed top-16 left-0 w-full z-[45] bg-gray-900/95 text-white text-xs sm:text-sm py-2 px-4 flex items-center justify-between border-b border-white/5">
   <div class="flex items-center space-x-2 min-w-0">
     <span class="bg-red-500 text-[10px] sm:text-xs px-2 py-0.5 rounded font-bold shrink-0">공지</span>
     <a href="/notice/{{ latest_notice.id }}" class="hover:underline truncate max-w-xl">{{ latest_notice.title }}</a>
@@ -40,41 +40,11 @@
         <p class="text-slate-300 mt-8 text-[11px] tracking-widest font-light animate-pulse">안전한 감성 클라우드 렌더러 로딩 중...</p>
     </div>
 
-    <!-- [요구사항 3] 상단 탭 고정 및 미드나잇 소프트 네이비 처리 -->
-    <nav class="fixed {% if latest_notice %}top-10{% else %}top-0{% endif %} left-0 w-full z-50 bg-[#151E3D] border-b border-white/10 transition-all duration-300 shadow-md">
-        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-            <!-- 로고 (명품 세리프의 품격 유지) -->
-            <a href="/" class="flex items-center space-x-2 group">
-                <span class="font-serif text-2xl font-extrabold text-white tracking-tight italic transition-all duration-300 group-hover:text-indigo-300">flairy</span>
-                <span class="text-base text-indigo-300 transition-transform duration-500 group-hover:rotate-180">✦</span>
-            </a>
-            
-            <!-- 메뉴 탭 -->
-            <div class="hidden md:flex items-center space-x-10 text-xs font-semibold uppercase tracking-wider text-slate-200">
-                <a href="#features" class="hover:text-indigo-300 transition-colors duration-200">기능 소개</a>
-                <a href="#simulator" class="hover:text-indigo-300 transition-colors duration-200">3D 미리보기</a>
-                <a href="#theme" class="hover:text-indigo-300 transition-colors duration-200">테마 갤러리</a>
-                <a href="#beta-event" class="hover:text-indigo-300 transition-colors duration-200">베타 런칭 이벤트</a>
-            </div>
-
-            <!-- 네비게이션 액션 그룹 -->
-            <div class="flex items-center space-x-4">
-                <button onclick="navigateToApp()" class="px-5 py-2.5 rounded-full text-xs font-bold tracking-wider text-slate-200 hover:text-white transition-all">
-                    로그인
-                </button>
-                <button onclick="navigateToApp()" class="px-6 py-2.5 rounded-full text-xs font-extrabold tracking-wider text-white bg-flairy-accent shadow-glow-indigo hover:bg-flairy-accentHover transition-all duration-300 transform hover:scale-[1.03]">
-                    <span class="flex items-center space-x-1">
-                        <span>무료 앨범 만들기</span>
-                        <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i>
-                    </span>
-                </button>
-            </div>
-        </div>
-    </nav>
+    <!-- 공통 고정 헤더는 landing_base에서 렌더 -->
 
     <!-- [요구사항 2] 교차 섹션 1: 히어로 구역 (조금 더 연하고 온화해진 클래식 슬레이트 네이비 배경) -->
     <!-- [구성 조정] 1세트: 좌측 정보 메시지 + 우측 "AI 아티스틱 보정 엔진" Before/After 슬라이더 일체화 -->
-    <header class="relative min-h-screen {% if latest_notice %}pt-44{% else %}pt-36{% endif %} pb-20 flex items-center justify-center bg-[#151E3D] text-white overflow-hidden">
+    <header class="relative min-h-screen {% if latest_notice %}pt-28{% else %}pt-16{% endif %} pb-20 flex items-center justify-center bg-[#151E3D] text-white overflow-hidden">
         <!-- 은은하고 밝아진 보랏빛/하늘빛 백그라운드 그라디언트 스팟 -->
         <div class="absolute top-1/4 left-10 w-96 h-96 bg-flairy-accent/15 rounded-full blur-[150px] pointer-events-none"></div>
         <div class="absolute bottom-10 right-10 w-80 h-80 bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none"></div>
@@ -559,9 +529,10 @@
             <div class="space-y-3">
                 <h4 class="text-white font-bold tracking-wider uppercase text-[10px]">시뮬레이션 체험</h4>
                 <ul class="space-y-2 font-light text-slate-400">
-                    <li><a href="/guide" class="hover:text-flairy-accent transition-colors">이용안내 (How It Works)</a></li>
-                    <li><a href="#simulator" class="hover:text-flairy-accent transition-colors">3D 디지털 앨범 조작 체험</a></li>
-                    <li><a href="#theme" class="hover:text-flairy-accent transition-colors">테마 오디오 사운드 센터</a></li>
+                    <li><a href="/create" class="hover:text-flairy-accent transition-colors">Create</a></li>
+                    <li><a href="/portfolio" class="hover:text-flairy-accent transition-colors">Portfolio</a></li>
+                    <li><a href="/guide" class="hover:text-flairy-accent transition-colors">이용안내 (Guide)</a></li>
+                    <li><a href="/qna" class="hover:text-flairy-accent transition-colors">Q&amp;A</a></li>
                 </ul>
             </div>
 

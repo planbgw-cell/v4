@@ -2,7 +2,6 @@
 {% block title %}문의하기 - 묻고답하기 - Flairy{% endblock %}
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-6">
-  {% include "partials/header.html" %}
 
   <section class="mt-6 mb-4">
     <h1 class="text-2xl font-bold text-gray-900">문의하기</h1>
@@ -74,8 +73,7 @@
       .then(function (res) {
         if (res.status === 401) {
           alert("로그인이 필요합니다.");
-          var headerAuthBtn = document.getElementById("headerAuthBtn");
-          if (headerAuthBtn) headerAuthBtn.click();
+          window.location.href = "/login?next=/qna/new";
           return null;
         }
         if (!res.ok) {

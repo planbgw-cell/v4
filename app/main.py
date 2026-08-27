@@ -29,7 +29,7 @@ logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("engine").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -321,14 +321,53 @@ async def guide_page(request: Request, current_user=Depends(get_current_user_opt
     )
 
 
+def _safe_next_path(next_path: str | None, default: str = "/storage") -> str:
+    """Open redirect 방지: 사이트 내부 상대 경로만 허용."""
+    raw = (next_path or "").strip()
+    if not raw.startswith("/") or raw.startswith("//") or "://" in raw:
+        return default
+    return raw
+
+
+@app.get("/portfolio", response_class=HTMLResponse)
+async def portfolio_page(request: Request, current_user=Depends(get_current_user_optional)):
+    """포트폴리오 쇼케이스."""
+    return templates.TemplateResponse(
+        "portfolio.html",
+        {"request": request, "current_user": current_user},
+    )
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(
+    request: Request,
+    next_url: str = Query("/storage", alias="next"),
+    current_user=Depends(get_current_user_optional),
+):
+    """독립 로그인 페이지."""
+    next_path = _safe_next_path(next_url)
+    if current_user is not None:
+        return RedirectResponse(url=next_path, status_code=302)
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "current_user": current_user, "next_path": next_path},
+    )
+
+
 @app.get("/mypage", response_class=HTMLResponse)
-async def mypage_page(
+async def mypage_redirect():
+    """레거시 /mypage → /storage."""
+    return RedirectResponse(url="/storage", status_code=302)
+
+
+@app.get("/storage", response_class=HTMLResponse)
+async def storage_page(
     request: Request,
     current_user=Depends(get_current_user_optional),
 ):
-    """내 보관함. 로그인 필수; 비로그인 시 / 로 리다이렉트."""
+    """내 보관함. 로그인 필수; 비로그인 시 /login 으로 리다이렉트."""
     if current_user is None:
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url="/login?next=/storage", status_code=302)
     db = SessionLocal()
     try:
         projects_raw = get_projects_by_user_id(db, current_user.id)
@@ -360,7 +399,13 @@ def _progress_debug(debug: str) -> bool:
 
 
 @app.get("/progress/{type}/{project_id}", response_class=HTMLResponse)
-async def progress_page(request: Request, type: str, project_id: str, debug: str = ""):
+async def progress_page(
+    request: Request,
+    type: str,
+    project_id: str,
+    debug: str = "",
+    current_user=Depends(get_current_user_optional),
+):
     """진행률 UI. type으로 템플릿 즉시 결정 (DB 조회 없음). video→progress.html, album→progress_album.html."""
     if type not in ("video", "album"):
         return HTMLResponse(
@@ -377,7 +422,13 @@ async def progress_page(request: Request, type: str, project_id: str, debug: str
     template = "progress.html" if type == "video" else "progress_album.html"
     return templates.TemplateResponse(
         template,
-        {"request": request, "project_id": project_id, "project_type": type, "debug": _progress_debug(debug)},
+        {
+            "request": request,
+            "project_id": project_id,
+            "project_type": type,
+            "debug": _progress_debug(debug),
+            "current_user": current_user,
+        },
     )
 
 
